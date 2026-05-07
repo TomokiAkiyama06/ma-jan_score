@@ -50,12 +50,17 @@ export function SetRecordForm({ session, hanchans, userId }: Props) {
   const participants = session.participants ?? []
   const preset = session.preset
 
-  // 前回の席配置をデフォルトに
+  // 前回の席配置をデフォルトに。初回は参加者順に自動割当
   const lastHanchan = hanchans[hanchans.length - 1]
   const defaultSeats = lastHanchan?.participants_per_seat ?? (() => {
-    const seats = ['', '', '', '']
-    seats[0] = '自分'  // index 0 = south（ocrData の並び順に合わせる）
-    return seats
+    // south(0)=自分、west(1)/north(2)/east(3) に残り参加者を順番に割当
+    const nonSelf = participants.filter(p => p !== '自分')
+    return [
+      '自分',
+      nonSelf[0] ?? '',
+      nonSelf[1] ?? '',
+      nonSelf[2] ?? '',
+    ]
   })()
 
   const [ocrData, setOcrData] = useState<OcrScore[]>([
@@ -140,7 +145,11 @@ export function SetRecordForm({ session, hanchans, userId }: Props) {
   async function handleSave() {
     if (!allScoresFilled) { toast.error('4人分のスコアを入力してください'); return }
     const validSeats = seats.filter(Boolean)
-    if (validSeats.length !== 4) { toast.error('4人分の参加者を入力してください'); return }
+    if (validSeats.length !== 4) {
+      const empty = ['北', '西', '東'].filter((_, i) => !seats[i + 1])
+      toast.error(`${empty.join('・')}の席の参加者を選択してください`)
+      return
+    }
     const scoreValues = scores as number[]
     const rank = calculateRank(scoreValues, myIndex)
     setSaving(true)
