@@ -67,7 +67,12 @@ export function SetStartForm({ presets, userId }: Props) {
       .select('id')
       .single()
 
-    if (error) { toast.error('セット開始に失敗しました'); setLoading(false); return }
+    if (error) {
+      console.error('session insert error:', error)
+      toast.error(`セット開始に失敗しました: ${error.message}`)
+      setLoading(false)
+      return
+    }
     toast.success('セットを開始しました')
     router.push(`/record/set/${data.id}`)
     router.refresh()
