@@ -144,10 +144,20 @@ export function SetRecordForm({ session, hanchans, userId }: Props) {
 
   async function handleSave() {
     if (!allScoresFilled) { toast.error('4人分のスコアを入力してください'); return }
-    const validSeats = seats.filter(Boolean)
+
+    // south席（myIndex）は常に「自分」として確定させる
+    const finalSeats = seats.map((s, i) => i === myIndex ? '自分' : s)
+    const validSeats = finalSeats.filter(Boolean)
     if (validSeats.length !== 4) {
-      const empty = ['北', '西', '東'].filter((_, i) => !seats[i + 1])
-      toast.error(`${empty.join('・')}の席の参加者を選択してください`)
+      // どの席が未選択かを特定
+      const posLabels = ['南', '西', '北', '東']
+      const emptyLabels = finalSeats
+        .map((s, i) => (!s && i !== myIndex ? posLabels[i] : null))
+        .filter(Boolean)
+      toast.error(emptyLabels.length > 0
+        ? `${emptyLabels.join('・')}の席の参加者を選択してください`
+        : '4人分の参加者を選択してください'
+      )
       return
     }
     const scoreValues = scores as number[]
@@ -167,7 +177,7 @@ export function SetRecordForm({ session, hanchans, userId }: Props) {
       my_seat_index: myIndex,
       my_rank: rank,
       chip_count: 0,
-      participants_per_seat: seats,
+      participants_per_seat: finalSeats,
       photo_url: photoUrl,
       notes: notes.trim() || null,
     })
