@@ -1,3 +1,7 @@
+-- ============================================================
+-- 麻雀スコア アプリ スキーマ（統合版）
+-- ============================================================
+
 -- プリセット
 CREATE TABLE presets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -12,18 +16,31 @@ CREATE TABLE presets (
   return_score INTEGER NOT NULL DEFAULT 30000,
   oka_enabled BOOLEAN NOT NULL DEFAULT true,
   chip_rate INTEGER NOT NULL DEFAULT 100,
+  seat_change_interval INTEGER,          -- N半荘ごとに場替え。NULL=ルールなし
   is_default BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- セッション
+-- セッション（フリー or セット）
 CREATE TABLE sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   preset_id UUID REFERENCES presets(id) NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'free' CHECK (mode IN ('free', 'set')),
   started_at TIMESTAMPTZ DEFAULT NOW(),
   ended_at TIMESTAMPTZ,
   location_memo TEXT,
+  -- セットモード専用
+  set_name TEXT,
+  participants TEXT[],
+  hourly_rate INTEGER,
+  reserve_fee INTEGER DEFAULT 1000,
+  chip_rate INTEGER,
+  total_fee INTEGER,
+  participant_chips JSONB,
+  split_method TEXT DEFAULT 'per_hanchan_winner'
+    CHECK (split_method IN ('per_hanchan_winner', 'equal', 'manual')),
+  manual_split JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -36,6 +53,7 @@ CREATE TABLE hanchans (
   scores INTEGER[] NOT NULL,
   my_seat_index INTEGER NOT NULL,
   my_rank INTEGER NOT NULL CHECK (my_rank BETWEEN 1 AND 4),
+  participants_per_seat TEXT[],          -- セットモード時のみ。scoresと同じ順
   chip_count INTEGER NOT NULL DEFAULT 0,
   photo_url TEXT,
   notes TEXT,
@@ -56,9 +74,8 @@ CREATE POLICY "users_own_sessions" ON sessions FOR ALL USING (auth.uid() = user_
 CREATE POLICY "users_own_hanchans" ON hanchans FOR ALL USING (auth.uid() = user_id);
 
 -- Storage Bucket: "hanchan-photos" (private)
--- Supabase Dashboardで以下を設定:
--- 1. Storage > New bucket > "hanchan-photos" > private
--- 2. Storage Policies:
---    INSERT: (auth.uid() = (storage.foldername(name))[1])
---    SELECT: (auth.uid() = (storage.foldername(name))[1])
---    DELETE: (auth.uid() = (storage.foldername(name))[1])
+-- Supabase Dashboard > Storage > New bucket > hanchan-photos > private
+-- Storage Policies:
+--   INSERT: (auth.uid() = (storage.foldername(name))[1])
+--   SELECT: (auth.uid() = (storage.foldername(name))[1])
+--   DELETE: (auth.uid() = (storage.foldername(name))[1])

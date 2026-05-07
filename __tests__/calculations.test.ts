@@ -22,6 +22,7 @@ const basePreset: Preset = {
   return_score: 30000,
   oka_enabled: true,
   chip_rate: 100,
+  seat_change_interval: null,
   is_default: true,
   created_at: '2024-01-01T00:00:00Z',
 }
@@ -34,6 +35,7 @@ const baseHanchan: Hanchan = {
   scores: [30000, 25000, 25000, 20000],
   my_seat_index: 0,
   my_rank: 1,
+  participants_per_seat: null,
   chip_count: 0,
   photo_url: null,
   notes: null,
