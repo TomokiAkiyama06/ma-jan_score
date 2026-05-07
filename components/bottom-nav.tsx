@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, BarChart2, Settings2, BookOpen } from 'lucide-react'
+import { Home, BarChart2, Settings2, BookOpen, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { href: '/', label: 'ホーム', icon: Home },
   { href: '/stats', label: '統計', icon: BarChart2 },
+  { href: '/history', label: '履歴', icon: History },
   { href: '/presets', label: 'ルール', icon: BookOpen },
   { href: '/settings', label: '設定', icon: Settings2 },
 ]
@@ -29,8 +30,8 @@ export function BottomNav() {
                 active ? 'text-zinc-50' : 'text-zinc-500 hover:text-zinc-300'
               )}
             >
-              <Icon size={22} strokeWidth={active ? 2.5 : 1.5} />
-              <span className="text-xs font-medium">{label}</span>
+              <Icon size={20} strokeWidth={active ? 2.5 : 1.5} />
+              <span className="text-[10px] font-medium">{label}</span>
             </Link>
           )
         })}

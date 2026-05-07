@@ -1,11 +1,11 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
+import { Plus, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
-import { calculateProfit, formatProfit } from '@/lib/calculations'
+import { calculateProfit, enrichWithProfit, calcKpi, formatProfit } from '@/lib/calculations'
+import { SessionControls } from './session-controls'
 import type { Hanchan, Preset, Session } from '@/lib/types'
 
-const RANK_LABEL = ['', '1位', '2位', '3位', '4位']
 const RANK_COLOR = ['', 'text-yellow-400', 'text-zinc-300', 'text-orange-400', 'text-red-400']
 
 export default async function HomePage() {
@@ -13,7 +13,7 @@ export default async function HomePage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [{ data: presetsData }, { data: hanchansData }, { data: sessionsData }] = await Promise.all([
+  const [{ data: presetsData }, { data: hanchansData }, { data: allHanchansData }, { data: activeSessionData }] = await Promise.all([
     supabase.from('presets').select('*').eq('user_id', user.id).order('created_at'),
     supabase
       .from('hanchans')
@@ -21,6 +21,11 @@ export default async function HomePage() {
       .eq('user_id', user.id)
       .order('played_at', { ascending: false })
       .limit(5),
+    supabase
+      .from('hanchans')
+      .select('*, session:sessions(*, preset:presets(*))')
+      .eq('user_id', user.id)
+      .order('played_at', { ascending: true }),
     supabase
       .from('sessions')
       .select('*, preset:presets(*)')
@@ -32,29 +37,51 @@ export default async function HomePage() {
 
   const presets = (presetsData ?? []) as Preset[]
   const recentHanchans = (hanchansData ?? []) as (Hanchan & { session: Session & { preset: Preset } })[]
-  const activeSession = sessionsData?.[0] as (Session & { preset: Preset }) | undefined
+  const allHanchans = (allHanchansData ?? []) as (Hanchan & { session: Session & { preset: Preset } })[]
+  const activeSession = activeSessionData?.[0] as (Session & { preset: Preset }) | undefined
+
+  const enriched = enrichWithProfit(allHanchans, presets)
+  const kpi = calcKpi(enriched, presets)
 
   return (
-    <div className="px-4 pt-6 space-y-6">
+    <div className="px-4 pt-6 pb-8 space-y-5">
       {/* ヘッダー */}
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-50">🀄 麻雀スコア</h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-zinc-50">🀄 麻雀スコア</h1>
+        </div>
       </div>
+
+      {/* 累計収支サマリ */}
+      {kpi.hanchanCount > 0 && (
+        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
+          <p className="text-xs text-zinc-500 mb-1">累計収支 ({kpi.hanchanCount}半荘)</p>
+          <p className={`text-3xl font-black tracking-tight ${kpi.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {formatProfit(kpi.totalProfit)}
+          </p>
+          <div className="flex gap-4 mt-3 text-xs text-zinc-500">
+            <span>平均 {kpi.avgRank.toFixed(2)}位</span>
+            <span>トップ {kpi.topRate.toFixed(0)}%</span>
+            <span>ラス {kpi.lastRate.toFixed(0)}%</span>
+          </div>
+        </div>
+      )}
 
       {/* アクティブセッション */}
       {activeSession && (
-        <div className="rounded-xl bg-zinc-800 border border-zinc-700 p-4">
-          <p className="text-xs text-zinc-400 mb-1">進行中のセッション</p>
-          <p className="font-semibold text-zinc-100">{activeSession.preset?.name}</p>
-          <p className="text-sm text-zinc-400 mt-1">
-            開始: {new Date(activeSession.started_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </p>
-        </div>
+        <SessionControls session={activeSession} />
       )}
 
       {/* 直近の半荘 */}
       <div>
-        <h2 className="text-sm font-medium text-zinc-400 mb-3">直近の記録</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-zinc-400">直近の記録</h2>
+          {recentHanchans.length > 0 && (
+            <Link href="/history" className="flex items-center gap-0.5 text-xs text-zinc-500 hover:text-zinc-300">
+              すべて見る <ChevronRight size={12} />
+            </Link>
+          )}
+        </div>
         {recentHanchans.length === 0 ? (
           <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-8 text-center">
             <p className="text-zinc-500 text-sm">記録がありません</p>
@@ -97,7 +124,7 @@ export default async function HomePage() {
         </div>
       )}
 
-      {/* FAB: 新規記録ボタン */}
+      {/* FAB */}
       <div className="fixed bottom-20 right-4">
         <Link
           href="/record"
