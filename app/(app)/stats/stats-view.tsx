@@ -3,9 +3,8 @@
 import { useMemo, useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, BarChart, Bar, Legend
+  PieChart, Pie, Cell, BarChart, Bar, ReferenceLine
 } from 'recharts'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   calcKpi, calcCumulative, calcRankDistribution, calcMonthlyStats,
   calcPresetStats, enrichWithProfit, formatProfit
@@ -18,9 +17,16 @@ type Props = {
 }
 
 const RANK_COLORS = ['#FBBF24', '#D4D4D8', '#F97316', '#EF4444']
-const CHART_COLORS = { pos: '#4ADE80', neg: '#F87171', line: '#A1A1AA' }
+const RANK_LABELS = ['1位', '2位', '3位', '4位']
 
 type Period = 'all' | 'month' | '30d' | '90d'
+
+const PERIOD_LABELS: Record<Period, string> = {
+  all: '全期間',
+  month: '今月',
+  '30d': '30日',
+  '90d': '90日',
+}
 
 export function StatsView({ hanchans: raw, presets }: Props) {
   const [period, setPeriod] = useState<Period>('all')
@@ -54,13 +60,13 @@ export function StatsView({ hanchans: raw, presets }: Props) {
   const presetStats = useMemo(() => calcPresetStats(enriched, presets), [enriched, presets])
 
   const kpiCards = [
-    { label: '累計収支', value: formatProfit(kpi.totalProfit), positive: kpi.totalProfit >= 0 },
-    { label: '半荘数', value: `${kpi.hanchanCount}回` },
-    { label: '平均着順', value: kpi.hanchanCount > 0 ? `${kpi.avgRank.toFixed(2)}位` : '-' },
-    { label: 'トップ率', value: kpi.hanchanCount > 0 ? `${kpi.topRate.toFixed(1)}%` : '-' },
-    { label: 'ラス率', value: kpi.hanchanCount > 0 ? `${kpi.lastRate.toFixed(1)}%` : '-' },
-    { label: '平均素点', value: kpi.hanchanCount > 0 ? `${Math.round(kpi.avgScore).toLocaleString()}点` : '-' },
-    { label: 'チップ累計', value: `${kpi.totalChips >= 0 ? '+' : ''}${kpi.totalChips}枚` },
+    { label: '累計収支', value: formatProfit(kpi.totalProfit), colorClass: kpi.totalProfit >= 0 ? 'text-green-400' : 'text-red-400' },
+    { label: '半荘数', value: `${kpi.hanchanCount}回`, colorClass: 'text-zinc-100' },
+    { label: '平均着順', value: kpi.hanchanCount > 0 ? `${kpi.avgRank.toFixed(2)}位` : '-', colorClass: 'text-zinc-100' },
+    { label: 'トップ率', value: kpi.hanchanCount > 0 ? `${kpi.topRate.toFixed(1)}%` : '-', colorClass: 'text-yellow-400' },
+    { label: 'ラス率', value: kpi.hanchanCount > 0 ? `${kpi.lastRate.toFixed(1)}%` : '-', colorClass: 'text-red-400' },
+    { label: '平均素点', value: kpi.hanchanCount > 0 ? `${Math.round(kpi.avgScore).toLocaleString()}` : '-', colorClass: 'text-zinc-100' },
+    { label: 'チップ累計', value: kpi.hanchanCount > 0 ? `${kpi.totalChips >= 0 ? '+' : ''}${kpi.totalChips}枚` : '-', colorClass: kpi.totalChips >= 0 ? 'text-green-400' : 'text-red-400' },
   ]
 
   if (raw.length === 0) {
@@ -73,94 +79,152 @@ export function StatsView({ hanchans: raw, presets }: Props) {
   }
 
   return (
-    <div className="px-4 pt-6 pb-8 space-y-6">
+    <div className="px-4 pt-6 pb-8 space-y-5">
       <h1 className="text-2xl font-bold text-zinc-50">統計</h1>
 
-      {/* フィルタ */}
+      {/* 期間フィルタ */}
       <div className="space-y-2">
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-          {(['all', 'month', '30d', '90d'] as Period[]).map(p => (
+          {(Object.keys(PERIOD_LABELS) as Period[]).map(p => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
               className={`flex-none px-4 py-2 rounded-full text-sm font-medium transition-colors ${period === p ? 'bg-zinc-50 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}
             >
-              {p === 'all' ? '全期間' : p === 'month' ? '今月' : p === '30d' ? '30日' : '90日'}
+              {PERIOD_LABELS[p]}
             </button>
           ))}
         </div>
         {presets.length > 1 && (
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-            <button onClick={() => setFilterPresetId('all')} className={`flex-none px-3 py-1.5 rounded-full text-xs font-medium ${filterPresetId === 'all' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-900 text-zinc-500'}`}>全て</button>
+            <button
+              onClick={() => setFilterPresetId('all')}
+              className={`flex-none px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${filterPresetId === 'all' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-900 text-zinc-500'}`}
+            >
+              全ルール
+            </button>
             {presets.map(p => (
-              <button key={p.id} onClick={() => setFilterPresetId(p.id)} className={`flex-none px-3 py-1.5 rounded-full text-xs font-medium ${filterPresetId === p.id ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-900 text-zinc-500'}`}>{p.name}</button>
+              <button
+                key={p.id}
+                onClick={() => setFilterPresetId(p.id)}
+                className={`flex-none px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${filterPresetId === p.id ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-900 text-zinc-500'}`}
+              >
+                {p.name}
+              </button>
             ))}
           </div>
         )}
       </div>
 
-      {/* KPIカード */}
-      <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-        {kpiCards.map(({ label, value, positive }) => (
-          <div key={label} className="flex-none rounded-xl bg-zinc-900 border border-zinc-800 p-4 min-w-[110px] text-center">
-            <p className="text-xs text-zinc-500 mb-1">{label}</p>
-            <p className={`text-lg font-bold leading-tight ${positive === true ? 'text-green-400' : positive === false ? 'text-red-400' : 'text-zinc-100'}`}>
-              {value}
-            </p>
+      {/* KPIカード横スクロール */}
+      <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
+        {kpiCards.map(({ label, value, colorClass }) => (
+          <div key={label} className="flex-none rounded-xl bg-zinc-900 border border-zinc-800 p-4 w-28 text-center">
+            <p className="text-[10px] text-zinc-500 mb-1.5 leading-tight">{label}</p>
+            <p className={`text-base font-bold leading-tight ${colorClass}`}>{value}</p>
           </div>
         ))}
       </div>
 
       {enriched.length === 0 ? (
-        <p className="text-center text-zinc-500 py-8">この期間の記録はありません</p>
+        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-8 text-center">
+          <p className="text-zinc-500">この期間の記録はありません</p>
+        </div>
       ) : (
         <>
-          {/* 累計収支 */}
+          {/* 累計収支推移 */}
           <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-medium text-zinc-300">累計収支推移</h2>
-              <div className="flex gap-1">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-zinc-300">累計収支推移</h2>
+              <div className="flex gap-1 bg-zinc-800 rounded-lg p-0.5">
                 {(['index', 'date'] as const).map(t => (
-                  <button key={t} onClick={() => setCumulativeTab(t)} className={`text-xs px-2 py-1 rounded ${cumulativeTab === t ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500'}`}>
-                    {t === 'index' ? '半荘番号' : '日付'}
+                  <button
+                    key={t}
+                    onClick={() => setCumulativeTab(t)}
+                    className={`text-xs px-2.5 py-1 rounded-md transition-colors ${cumulativeTab === t ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500'}`}
+                  >
+                    {t === 'index' ? '番号' : '日付'}
                   </button>
                 ))}
               </div>
             </div>
             <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={cumulative}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
-                <XAxis dataKey={cumulativeTab === 'index' ? 'index' : 'date'} tick={{ fontSize: 10, fill: '#71717a' }} />
-                <YAxis tick={{ fontSize: 10, fill: '#71717a' }} tickFormatter={v => `${v >= 0 ? '+' : ''}${(v / 1000).toFixed(0)}k`} />
+              <LineChart data={cumulative} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                <XAxis
+                  dataKey={cumulativeTab === 'index' ? 'index' : 'date'}
+                  tick={{ fontSize: 10, fill: '#71717a' }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: '#71717a' }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={v => `${v >= 0 ? '+' : ''}${(v / 1000).toFixed(0)}k`}
+                  width={45}
+                />
                 <Tooltip
-                  contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8 }}
-                  labelStyle={{ color: '#a1a1aa' }}
+                  contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8, padding: '8px 12px' }}
+                  labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
                   formatter={(v) => [formatProfit(Number(v)), '累計収支']}
                 />
-                <Line type="monotone" dataKey="cumulative" stroke={CHART_COLORS.line} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey={0} stroke="#52525b" strokeDasharray="4 4" dot={false} />
+                <ReferenceLine y={0} stroke="#52525b" strokeDasharray="4 4" />
+                <Line
+                  type="monotone"
+                  dataKey="cumulative"
+                  stroke="#a1a1aa"
+                  strokeWidth={2}
+                  dot={enriched.length <= 20 ? { r: 3, fill: '#a1a1aa', strokeWidth: 0 } : false}
+                  activeDot={{ r: 5, fill: '#fff' }}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
 
           {/* 着順分布 */}
           <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <h2 className="text-sm font-medium text-zinc-300 mb-3">着順分布</h2>
-            <div className="flex items-center gap-4">
-              <ResponsiveContainer width={140} height={140}>
-                <PieChart>
-                  <Pie data={rankDist} dataKey="count" cx="50%" cy="50%" innerRadius={35} outerRadius={60} paddingAngle={2}>
-                    {rankDist.map((_, i) => <Cell key={i} fill={RANK_COLORS[i]} />)}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-2 flex-1">
+            <h2 className="text-sm font-semibold text-zinc-300 mb-4">着順分布</h2>
+            <div className="flex items-center gap-6">
+              <div className="flex-none">
+                <ResponsiveContainer width={130} height={130}>
+                  <PieChart>
+                    <Pie
+                      data={rankDist}
+                      dataKey="count"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={36}
+                      outerRadius={58}
+                      paddingAngle={2}
+                      startAngle={90}
+                      endAngle={-270}
+                    >
+                      {rankDist.map((_, i) => <Cell key={i} fill={RANK_COLORS[i]} />)}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8 }}
+                      formatter={(v, _name, entry) => [`${v}回 (${entry.payload.rate.toFixed(1)}%)`, RANK_LABELS[entry.payload.rank - 1]]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1 space-y-2.5">
                 {rankDist.map((d, i) => (
-                  <div key={d.rank} className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full" style={{ background: RANK_COLORS[i] }} />
-                    <span className="text-xs text-zinc-400 w-8">{d.rank}位</span>
-                    <span className="text-sm font-medium text-zinc-200">{d.count}回</span>
-                    <span className="text-xs text-zinc-500">{d.rate.toFixed(1)}%</span>
+                  <div key={d.rank} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: RANK_COLORS[i] }} />
+                        <span className="text-xs text-zinc-400">{d.rank}位</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500">{d.count}回</span>
+                        <span className="text-xs font-semibold text-zinc-300 w-10 text-right">{d.rate.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-zinc-800 rounded-full h-1.5">
+                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${d.rate}%`, background: RANK_COLORS[i] }} />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -170,42 +234,55 @@ export function StatsView({ hanchans: raw, presets }: Props) {
           {/* 月次収支 */}
           {monthly.length > 0 && (
             <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-              <h2 className="text-sm font-medium text-zinc-300 mb-3">月次収支</h2>
+              <h2 className="text-sm font-semibold text-zinc-300 mb-4">月次収支</h2>
               <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={monthly}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#71717a' }} />
-                  <YAxis tick={{ fontSize: 10, fill: '#71717a' }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                <BarChart data={monthly} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#71717a' }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#71717a' }} tickLine={false} axisLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} width={36} />
                   <Tooltip
                     contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8 }}
                     formatter={(v) => [formatProfit(Number(v)), '収支']}
                   />
-                  <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
-                    {monthly.map((d, i) => <Cell key={i} fill={d.profit >= 0 ? CHART_COLORS.pos : CHART_COLORS.neg} />)}
+                  <ReferenceLine y={0} stroke="#52525b" />
+                  <Bar dataKey="profit" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                    {monthly.map((d, i) => <Cell key={i} fill={d.profit >= 0 ? '#4ade80' : '#f87171'} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
 
-          {/* プリセット別 */}
+          {/* ルール別収支 */}
           {presetStats.length > 1 && (
             <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-              <h2 className="text-sm font-medium text-zinc-300 mb-3">ルール別収支</h2>
+              <h2 className="text-sm font-semibold text-zinc-300 mb-4">ルール別収支</h2>
               <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={presetStats}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
-                  <XAxis dataKey="presetName" tick={{ fontSize: 10, fill: '#71717a' }} />
-                  <YAxis tick={{ fontSize: 10, fill: '#71717a' }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                <BarChart data={presetStats} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="presetName" tick={{ fontSize: 10, fill: '#71717a' }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#71717a' }} tickLine={false} axisLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} width={36} />
                   <Tooltip
                     contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 8 }}
-                    formatter={(v, name) => [name === 'profit' ? formatProfit(Number(v)) : `${v}回`, name === 'profit' ? '収支' : '半荘数']}
+                    formatter={(v, name) => [
+                      name === 'profit' ? formatProfit(Number(v)) : `${v}回`,
+                      name === 'profit' ? '収支' : '半荘数',
+                    ]}
                   />
-                  <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
-                    {presetStats.map((d, i) => <Cell key={i} fill={d.profit >= 0 ? CHART_COLORS.pos : CHART_COLORS.neg} />)}
+                  <ReferenceLine y={0} stroke="#52525b" />
+                  <Bar dataKey="profit" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                    {presetStats.map((d, i) => <Cell key={i} fill={d.profit >= 0 ? '#4ade80' : '#f87171'} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              <div className="mt-2 space-y-1">
+                {presetStats.map(d => (
+                  <div key={d.presetId} className="flex justify-between text-xs text-zinc-500">
+                    <span>{d.presetName}</span>
+                    <span>{d.count}半荘</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>

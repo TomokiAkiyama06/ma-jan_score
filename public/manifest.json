@@ -6,17 +6,27 @@
   "display": "standalone",
   "background_color": "#09090b",
   "theme_color": "#09090b",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
+  "categories": ["games", "utilities"],
   "icons": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "新規記録",
+      "url": "/record",
+      "description": "半荘の結果を記録する"
     },
     {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "name": "統計",
+      "url": "/stats",
+      "description": "成績グラフを見る"
     }
   ]
 }
