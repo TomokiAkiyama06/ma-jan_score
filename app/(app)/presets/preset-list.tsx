@@ -22,7 +22,8 @@ const DEFAULT_FORM = {
   return_score: 30000,
   oka_enabled: true,
   chip_rate: 100,
-  seat_change_interval: '' as string | number,  // 空文字=NULL
+  seat_change_interval: '' as string | number,
+  hako_shita_enabled: true,
 }
 
 type FormData = typeof DEFAULT_FORM
@@ -64,6 +65,7 @@ export function PresetList({ presets: initial, userId }: { presets: Preset[]; us
       oka_enabled: preset.oka_enabled,
       chip_rate: preset.chip_rate,
       seat_change_interval: preset.seat_change_interval ?? '',
+      hako_shita_enabled: preset.hako_shita_enabled ?? true,
     })
     setOpen(true)
   }
@@ -165,6 +167,7 @@ export function PresetList({ presets: initial, userId }: { presets: Preset[]; us
                 <p className="text-xs text-zinc-500 mt-1">
                   {p.rate}円/千点 ・ ウマ {p.uma_first}/{p.uma_second}/{p.uma_third}/{p.uma_fourth} ・ チップ{p.chip_rate}円
                   {p.seat_change_interval ? ` ・ 場替え${p.seat_change_interval}局` : ''}
+                  {!(p.hako_shita_enabled ?? true) ? ' ・ 箱下なし' : ''}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -232,6 +235,25 @@ export function PresetList({ presets: initial, userId }: { presets: Preset[]; us
                 className="w-5 h-5 rounded accent-zinc-50"
               />
               <Label htmlFor="oka_enabled" className="text-sm">オカあり</Label>
+            </div>
+            <div className="rounded-lg bg-zinc-800 border border-zinc-700 p-3 space-y-1">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="hako_shita_enabled" className="text-sm">箱下計算あり</Label>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    {form.hako_shita_enabled
+                      ? 'マイナスの素点をそのまま計算'
+                      : '素点がマイナスでも0扱い（トップの取り分が減る）'}
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  id="hako_shita_enabled"
+                  checked={form.hako_shita_enabled}
+                  onChange={e => setForm(f => ({ ...f, hako_shita_enabled: e.target.checked }))}
+                  className="w-5 h-5 rounded accent-zinc-50 flex-none"
+                />
+              </div>
             </div>
             <FormField label="チップ単価（円/枚）" id="chip_rate">
               <Input {...field('chip_rate')} type="number" inputMode="numeric" className={inputClass} />

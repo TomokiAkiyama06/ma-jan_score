@@ -23,6 +23,7 @@ const basePreset: Preset = {
   oka_enabled: true,
   chip_rate: 100,
   seat_change_interval: null,
+  hako_shita_enabled: true,
   is_default: true,
   created_at: '2024-01-01T00:00:00Z',
 }
@@ -117,6 +118,59 @@ describe('calculateProfit', () => {
     const h = { ...baseHanchan, scores: [25000, 25000, 25000, 25000], my_seat_index: 0, my_rank: 1, chip_count: 0 }
     // uma=1000, oka=1000 → 2000
     expect(calculateProfit(h, basePreset)).toBe(2000)
+  })
+})
+
+describe('四捨五入計算', () => {
+  it('素点差が端数あり（下位500点未満）は切り捨て', () => {
+    // score=27300: diff=2300, Math.round(2300/1000)=2, baseProfit=2*50=100
+    const h = { ...baseHanchan, scores: [27300, 26000, 25000, 21700], my_seat_index: 0, my_rank: 1, chip_count: 0 }
+    const profit = calculateProfit(h, basePreset)
+    // base=100, uma=1000, oka=1000 → 2100
+    expect(profit).toBe(2100)
+  })
+
+  it('素点差が端数あり（500点以上）は切り上げ', () => {
+    // score=27500: diff=2500, Math.round(2500/1000)=3 (四捨五入), baseProfit=3*50=150
+    const h = { ...baseHanchan, scores: [27500, 25000, 25000, 22500], my_seat_index: 0, my_rank: 1, chip_count: 0 }
+    const profit = calculateProfit(h, basePreset)
+    // base=150, uma=1000, oka=1000 → 2150
+    expect(profit).toBe(2150)
+  })
+
+  it('マイナス端数も四捨五入', () => {
+    // score=22700: diff=-2300, Math.round(-2300/1000)=Math.round(-2.3)=-2, baseProfit=-2*50=-100
+    const h = { ...baseHanchan, scores: [27300, 25000, 25000, 22700], my_seat_index: 3, my_rank: 4, chip_count: 0 }
+    const profit = calculateProfit(h, basePreset)
+    // base=-100, uma=-1000, oka=0 → -1100
+    expect(profit).toBe(-1100)
+  })
+})
+
+describe('箱下計算', () => {
+  it('箱下あり: マイナス素点をそのまま計算', () => {
+    const preset = { ...basePreset, hako_shita_enabled: true }
+    // score=-3000: diff=-3000-25000=-28000, Math.round(-28)=-28, base=-28*50=-1400
+    const h = { ...baseHanchan, scores: [52000, 26000, 25000, -3000], my_seat_index: 3, my_rank: 4, chip_count: 0 }
+    const profit = calculateProfit(h, preset)
+    // base=-1400, uma=-1000, oka=0 → -2400
+    expect(profit).toBe(-2400)
+  })
+
+  it('箱下なし: マイナス素点を0として計算', () => {
+    const preset = { ...basePreset, hako_shita_enabled: false }
+    // score=-3000 → effectiveScore=0: diff=0-25000=-25000, Math.round(-25)=-25, base=-25*50=-1250
+    const h = { ...baseHanchan, scores: [52000, 26000, 25000, -3000], my_seat_index: 3, my_rank: 4, chip_count: 0 }
+    const profit = calculateProfit(h, preset)
+    // base=-1250, uma=-1000, oka=0 → -2250
+    expect(profit).toBe(-2250)
+  })
+
+  it('箱下なし: プラスの素点には影響なし', () => {
+    const preset = { ...basePreset, hako_shita_enabled: false }
+    const h = { ...baseHanchan, scores: [30000, 25000, 25000, 20000], my_seat_index: 0, my_rank: 1, chip_count: 0 }
+    // 正の点数は影響なし → 通常と同じ 2250
+    expect(calculateProfit(h, preset)).toBe(2250)
   })
 })
 
