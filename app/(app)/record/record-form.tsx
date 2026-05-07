@@ -394,7 +394,7 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession }: 
             value={chipCount}
             onChange={e => setChipCount(Number(e.target.value))}
             type="number"
-            inputMode="numeric"
+            inputMode="decimal"
             className="w-24 text-center text-xl font-bold bg-zinc-900 border-zinc-700 h-12"
           />
           <button
@@ -436,19 +436,38 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession }: 
           <DialogHeader>
             <DialogTitle>{editingIndex !== null ? SEAT_LABELS[editingIndex] : ''}のスコアを入力</DialogTitle>
           </DialogHeader>
-          <Input
-            value={editValue}
-            onChange={e => setEditValue(e.target.value)}
-            type="number"
-            inputMode="numeric"
-            className="bg-zinc-900 border-zinc-700 text-zinc-50 h-14 text-2xl text-center font-bold"
-            autoFocus
-            onKeyDown={e => e.key === 'Enter' && commitEdit()}
-          />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex gap-2">
+            {/* +/- 符号切替ボタン */}
+            <button
+              type="button"
+              onClick={() => setEditValue(v => v.startsWith('-') ? v.slice(1) : `-${v}`)}
+              className="flex-none w-14 h-14 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-xl font-bold hover:bg-zinc-700 transition-colors"
+            >
+              +/−
+            </button>
+            <Input
+              value={editValue}
+              onChange={e => setEditValue(e.target.value)}
+              type="number"
+              inputMode="decimal"
+              className="flex-1 bg-zinc-900 border-zinc-700 text-zinc-50 h-14 text-2xl text-center font-bold"
+              autoFocus
+              onKeyDown={e => e.key === 'Enter' && commitEdit()}
+            />
+          </div>
+          {/* クイック入力（正の値） */}
+          <div className="grid grid-cols-4 gap-2">
             {[25000, 30000, 20000, 15000].map(v => (
-              <button key={v} onClick={() => setEditValue(String(v))} className="rounded-lg bg-zinc-800 border border-zinc-700 py-2 text-sm text-zinc-300 hover:bg-zinc-700 transition-colors">
-                {v.toLocaleString()}
+              <button key={v} onClick={() => setEditValue(String(v))} className="rounded-lg bg-zinc-800 border border-zinc-700 py-2 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors">
+                {(v / 1000).toFixed(0)}k
+              </button>
+            ))}
+          </div>
+          {/* クイック入力（負の値） */}
+          <div className="grid grid-cols-4 gap-2">
+            {[-5000, -10000, -15000, -20000].map(v => (
+              <button key={v} onClick={() => setEditValue(String(v))} className="rounded-lg bg-zinc-800 border border-zinc-700 py-2 text-xs text-red-400 hover:bg-zinc-700 transition-colors">
+                {(v / 1000).toFixed(0)}k
               </button>
             ))}
           </div>
