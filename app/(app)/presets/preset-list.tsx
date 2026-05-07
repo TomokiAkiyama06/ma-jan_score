@@ -22,6 +22,7 @@ const DEFAULT_FORM = {
   return_score: 30000,
   oka_enabled: true,
   chip_rate: 100,
+  seat_change_interval: '' as string | number,  // 空文字=NULL
 }
 
 type FormData = typeof DEFAULT_FORM
@@ -62,6 +63,7 @@ export function PresetList({ presets: initial, userId }: { presets: Preset[]; us
       return_score: preset.return_score,
       oka_enabled: preset.oka_enabled,
       chip_rate: preset.chip_rate,
+      seat_change_interval: preset.seat_change_interval ?? '',
     })
     setOpen(true)
   }
@@ -81,7 +83,11 @@ export function PresetList({ presets: initial, userId }: { presets: Preset[]; us
     if (!form.name.trim()) { toast.error('名前を入力してください'); return }
     setLoading(true)
     const supabase = createClient()
-    const payload = { ...form, user_id: userId }
+    const payload = {
+      ...form,
+      user_id: userId,
+      seat_change_interval: form.seat_change_interval === '' ? null : Number(form.seat_change_interval),
+    }
 
     const { data, error } = editing
       ? await supabase.from('presets').update(payload).eq('id', editing.id).select().single()
@@ -158,6 +164,7 @@ export function PresetList({ presets: initial, userId }: { presets: Preset[]; us
                 </div>
                 <p className="text-xs text-zinc-500 mt-1">
                   {p.rate}円/千点 ・ ウマ {p.uma_first}/{p.uma_second}/{p.uma_third}/{p.uma_fourth} ・ チップ{p.chip_rate}円
+                  {p.seat_change_interval ? ` ・ 場替え${p.seat_change_interval}局` : ''}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -228,6 +235,17 @@ export function PresetList({ presets: initial, userId }: { presets: Preset[]; us
             </div>
             <FormField label="チップ単価（円/枚）" id="chip_rate">
               <Input {...field('chip_rate')} type="number" inputMode="numeric" className={inputClass} />
+            </FormField>
+            <FormField label="場替え間隔（半荘数、空欄=なし）" id="seat_change_interval">
+              <Input
+                id="seat_change_interval"
+                type="number"
+                inputMode="numeric"
+                placeholder="例: 4"
+                value={String(form.seat_change_interval)}
+                onChange={e => setForm(f => ({ ...f, seat_change_interval: e.target.value }))}
+                className={inputClass}
+              />
             </FormField>
             <Button onClick={handleSave} disabled={loading} className="w-full h-12">
               {loading ? '保存中...' : '保存'}

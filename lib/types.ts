@@ -11,17 +11,31 @@ export type Preset = {
   return_score: number
   oka_enabled: boolean
   chip_rate: number
+  seat_change_interval: number | null
   is_default: boolean
   created_at: string
 }
+
+export type SplitMethod = 'per_hanchan_winner' | 'equal' | 'manual'
 
 export type Session = {
   id: string
   user_id: string
   preset_id: string
+  mode: 'free' | 'set'
   started_at: string
   ended_at: string | null
   location_memo: string | null
+  // セットモード専用
+  set_name?: string | null
+  participants?: string[] | null
+  hourly_rate?: number | null
+  reserve_fee?: number | null
+  chip_rate?: number | null
+  total_fee?: number | null
+  participant_chips?: Record<string, number> | null
+  split_method?: SplitMethod | null
+  manual_split?: Record<string, number> | null
   created_at: string
   preset?: Preset
 }
@@ -34,6 +48,7 @@ export type Hanchan = {
   scores: number[]
   my_seat_index: number
   my_rank: number
+  participants_per_seat: string[] | null
   chip_count: number
   photo_url: string | null
   notes: string | null
@@ -41,15 +56,22 @@ export type Hanchan = {
   session?: Session
 }
 
-export type HanchanWithProfit = Hanchan & {
-  profit: number
+export type HanchanWithProfit = Hanchan & { profit: number }
+
+// OCR レスポンス（位置情報付き）
+export type OcrPosition = 'north' | 'east' | 'south' | 'west'
+
+export type OcrScore = {
+  value: number | null
+  position: OcrPosition
 }
 
 export type OcrResult = {
-  scores: (number | null)[]
+  scores: OcrScore[]
   confidence: 'high' | 'medium' | 'low'
 }
 
+// 統計・集計
 export type KpiStats = {
   totalProfit: number
   hanchanCount: number
@@ -85,4 +107,32 @@ export type CumulativePoint = {
   date: string
   cumulative: number
   profit: number
+}
+
+// セットモード
+export type ParticipantSummary = {
+  participant: string
+  scoreProfit: number
+  chipCount: number
+  chipProfit: number
+  feeShare: number
+  netProfit: number
+  hanchanCount: number
+  ranks: number[]
+  topCount: number
+}
+
+export type Transfer = {
+  from: string
+  to: string
+  amount: number
+}
+
+export type SetSummary = {
+  session: Session
+  hanchans: Hanchan[]
+  summaries: ParticipantSummary[]
+  transfers: Transfer[]
+  totalFee: number
+  elapsedMinutes: number
 }
