@@ -54,8 +54,7 @@ export function SetRecordForm({ session, hanchans, userId }: Props) {
   const lastHanchan = hanchans[hanchans.length - 1]
   const defaultSeats = lastHanchan?.participants_per_seat ?? (() => {
     const seats = ['', '', '', '']
-    const meIdx = 2  // south
-    seats[meIdx] = '自分'
+    seats[0] = '自分'  // index 0 = south（ocrData の並び順に合わせる）
     return seats
   })()
 
@@ -67,7 +66,7 @@ export function SetRecordForm({ session, hanchans, userId }: Props) {
   ])
   const [ocrConfidence, setOcrConfidence] = useState<OcrResult['confidence'] | null>(null)
   const [seats, setSeats] = useState<string[]>(defaultSeats)  // 4席の参加者名
-  const [myIndex, setMyIndex] = useState<number>(defaultSeats.indexOf('自分') !== -1 ? defaultSeats.indexOf('自分') : 2)
+  const [myIndex, setMyIndex] = useState<number>(defaultSeats.indexOf('自分') !== -1 ? defaultSeats.indexOf('自分') : 0)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
