@@ -17,6 +17,7 @@ CREATE TABLE presets (
   oka_enabled BOOLEAN NOT NULL DEFAULT true,
   chip_rate INTEGER NOT NULL DEFAULT 100,
   seat_change_interval INTEGER,          -- N半荘ごとに場替え。NULL=ルールなし
+  hako_shita_enabled BOOLEAN NOT NULL DEFAULT true, -- false=箱下なし（マイナス素点を0扱い）
   is_default BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

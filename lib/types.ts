@@ -12,6 +12,7 @@ export type Preset = {
   oka_enabled: boolean
   chip_rate: number
   seat_change_interval: number | null
+  hako_shita_enabled: boolean
   is_default: boolean
   created_at: string
 }

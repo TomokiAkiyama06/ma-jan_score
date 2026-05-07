@@ -16,13 +16,22 @@ export function calculateRank(scores: number[], mySeatIndex: number): number {
 // ─── 収支計算 ─────────────────────────────────────────────
 
 export function calculateProfitForSeat(score: number, rank: number, preset: Preset): number {
-  const baseProfit = (score - preset.starting_score) / 1000 * preset.rate
+  // 箱下なし: マイナスの素点は0として扱う（トップの取り分が減る）
+  const hakoShita = preset.hako_shita_enabled ?? true
+  const effectiveScore = hakoShita ? score : Math.max(0, score)
+
+  // 四捨五入: 素点差を1000点単位で丸めてからレートを掛ける
+  const baseProfit = Math.round((effectiveScore - preset.starting_score) / 1000) * preset.rate
+
   const umaArr = [preset.uma_first, preset.uma_second, preset.uma_third, preset.uma_fourth]
   const uma = umaArr[rank - 1] * preset.rate
+
   let oka = 0
   if (preset.oka_enabled && rank === 1) {
+    // オカは原点と返しが1000点の倍数なので四捨五入不要
     oka = (preset.return_score - preset.starting_score) * 4 / 1000 * preset.rate
   }
+
   return baseProfit + uma + oka
 }
 
