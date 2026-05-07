@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, Minus, Plus, ChevronLeft, Keyboard, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Camera, ImageIcon, Minus, Plus, ChevronLeft, Keyboard, CheckCircle2, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -56,7 +56,8 @@ async function compressImage(file: File, maxPx = 1280, quality = 0.85): Promise<
 
 export function RecordForm({ presets, userId, activeSession, needsNewSession }: Props) {
   const router = useRouter()
-  const fileRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
 
   const [sessionModalOpen, setSessionModalOpen] = useState(needsNewSession || !activeSession)
   const [selectedPresetId, setSelectedPresetId] = useState(
@@ -231,7 +232,10 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession }: 
 
       {/* カメラ / OCR */}
       <div className="space-y-3">
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+        {/* カメラ起動用（capture="environment"） */}
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+        {/* ライブラリ選択用（captureなし） */}
+        <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
         {imagePreview ? (
           <div className="relative rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800">
@@ -249,23 +253,41 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession }: 
                 </Badge>
               </div>
             )}
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="absolute bottom-2 right-2 bg-zinc-900/80 text-zinc-200 text-xs px-3 py-1.5 rounded-full border border-zinc-700"
-            >
-              撮り直す
-            </button>
+            <div className="absolute bottom-2 right-2 flex gap-2">
+              <button
+                onClick={() => cameraRef.current?.click()}
+                className="bg-zinc-900/80 text-zinc-200 text-xs px-3 py-1.5 rounded-full border border-zinc-700 flex items-center gap-1"
+              >
+                <Camera size={12} /> 撮り直す
+              </button>
+              <button
+                onClick={() => galleryRef.current?.click()}
+                className="bg-zinc-900/80 text-zinc-200 text-xs px-3 py-1.5 rounded-full border border-zinc-700 flex items-center gap-1"
+              >
+                <ImageIcon size={12} /> 選び直す
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="w-full rounded-xl bg-zinc-900 border-2 border-dashed border-zinc-700 p-8 flex flex-col items-center gap-2 active:border-zinc-500 transition-colors"
-            >
-              <Camera size={32} className="text-zinc-500" />
-              <span className="text-zinc-400 text-sm font-medium">卓の得点表示を撮影</span>
-              <span className="text-zinc-600 text-xs">タップしてカメラを起動 / ライブラリから選択</span>
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => cameraRef.current?.click()}
+                className="rounded-xl bg-zinc-900 border-2 border-dashed border-zinc-700 p-6 flex flex-col items-center gap-2 active:border-zinc-500 active:bg-zinc-800 transition-colors"
+              >
+                <Camera size={28} className="text-zinc-400" />
+                <span className="text-zinc-300 text-sm font-medium">撮影する</span>
+                <span className="text-zinc-600 text-xs">カメラを起動</span>
+              </button>
+              <button
+                onClick={() => galleryRef.current?.click()}
+                className="rounded-xl bg-zinc-900 border-2 border-dashed border-zinc-700 p-6 flex flex-col items-center gap-2 active:border-zinc-500 active:bg-zinc-800 transition-colors"
+              >
+                <ImageIcon size={28} className="text-zinc-400" />
+                <span className="text-zinc-300 text-sm font-medium">写真を選ぶ</span>
+                <span className="text-zinc-600 text-xs">ライブラリから</span>
+              </button>
+            </div>
             <button
               onClick={() => { setManualMode(true); setOcrScores([null, null, null, null]) }}
               className="w-full flex items-center justify-center gap-2 py-3 text-zinc-500 text-sm hover:text-zinc-300 transition-colors"
@@ -372,7 +394,7 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession }: 
             value={chipCount}
             onChange={e => setChipCount(Number(e.target.value))}
             type="number"
-            inputMode="numeric"
+            inputMode="decimal"
             className="w-24 text-center text-xl font-bold bg-zinc-900 border-zinc-700 h-12"
           />
           <button
@@ -414,19 +436,38 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession }: 
           <DialogHeader>
             <DialogTitle>{editingIndex !== null ? SEAT_LABELS[editingIndex] : ''}のスコアを入力</DialogTitle>
           </DialogHeader>
-          <Input
-            value={editValue}
-            onChange={e => setEditValue(e.target.value)}
-            type="number"
-            inputMode="numeric"
-            className="bg-zinc-900 border-zinc-700 text-zinc-50 h-14 text-2xl text-center font-bold"
-            autoFocus
-            onKeyDown={e => e.key === 'Enter' && commitEdit()}
-          />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex gap-2">
+            {/* +/- 符号切替ボタン */}
+            <button
+              type="button"
+              onClick={() => setEditValue(v => v.startsWith('-') ? v.slice(1) : `-${v}`)}
+              className="flex-none w-14 h-14 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-xl font-bold hover:bg-zinc-700 transition-colors"
+            >
+              +/−
+            </button>
+            <Input
+              value={editValue}
+              onChange={e => setEditValue(e.target.value)}
+              type="number"
+              inputMode="decimal"
+              className="flex-1 bg-zinc-900 border-zinc-700 text-zinc-50 h-14 text-2xl text-center font-bold"
+              autoFocus
+              onKeyDown={e => e.key === 'Enter' && commitEdit()}
+            />
+          </div>
+          {/* クイック入力（正の値） */}
+          <div className="grid grid-cols-4 gap-2">
             {[25000, 30000, 20000, 15000].map(v => (
-              <button key={v} onClick={() => setEditValue(String(v))} className="rounded-lg bg-zinc-800 border border-zinc-700 py-2 text-sm text-zinc-300 hover:bg-zinc-700 transition-colors">
-                {v.toLocaleString()}
+              <button key={v} onClick={() => setEditValue(String(v))} className="rounded-lg bg-zinc-800 border border-zinc-700 py-2 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors">
+                {(v / 1000).toFixed(0)}k
+              </button>
+            ))}
+          </div>
+          {/* クイック入力（負の値） */}
+          <div className="grid grid-cols-4 gap-2">
+            {[-5000, -10000, -15000, -20000].map(v => (
+              <button key={v} onClick={() => setEditValue(String(v))} className="rounded-lg bg-zinc-800 border border-zinc-700 py-2 text-xs text-red-400 hover:bg-zinc-700 transition-colors">
+                {(v / 1000).toFixed(0)}k
               </button>
             ))}
           </div>
