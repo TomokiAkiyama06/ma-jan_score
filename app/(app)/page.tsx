@@ -39,7 +39,19 @@ export default async function HomePage() {
   const presets = (presetsData ?? []) as Preset[]
   const recentHanchans = (hanchansData ?? []) as (Hanchan & { session: Session & { preset: Preset } })[]
   const allHanchans = (allHanchansData ?? []) as (Hanchan & { session: Session & { preset: Preset } })[]
-  const activeSession = activeSessionData?.[0] as (Session & { preset: Preset }) | undefined
+  let activeSession = activeSessionData?.[0] as (Session & { preset: Preset }) | undefined
+
+  // フリーモードセッションが5時間超過していたら自動クローズ
+  if (activeSession?.mode === 'free') {
+    const age = Date.now() - new Date(activeSession.started_at).getTime()
+    if (age >= 5 * 60 * 60 * 1000) {
+      await supabase
+        .from('sessions')
+        .update({ ended_at: new Date().toISOString() })
+        .eq('id', activeSession.id)
+      activeSession = undefined
+    }
+  }
 
   const enriched = enrichWithProfit(allHanchans, presets)
   const kpi = calcKpi(enriched, presets)
