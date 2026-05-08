@@ -297,7 +297,7 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession, ha
               </button>
             </div>
             <p className="text-[11px] text-zinc-600 text-center px-2">
-              💡 縦持ちで卓の真上から撮影すると精度が上がります。自分の得点が画面の下側に来るように。
+              💡 自分側のパネルを正面から撮影。中央の大きな数字が自分のスコアです。
             </p>
             <button onClick={() => { setManualMode(true); setOcrData(d => d.map(x => ({ ...x, value: null }))) }} className="w-full flex items-center justify-center gap-2 py-3 text-zinc-500 text-sm hover:text-zinc-300 transition-colors">
               <Keyboard size={16} />手動で入力する
