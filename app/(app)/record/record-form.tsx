@@ -310,7 +310,9 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession, ha
       {(manualMode || imagePreview || ocrData.some(d => d.value !== null)) && (
         <div className="space-y-3">
           <p className="text-sm text-zinc-400">
-            {myIndex === null ? '自分の席をタップして選択（南が自動選択されます）' : '長押しでスコアを編集'}
+            {myIndex === null
+              ? '自分の席をタップして選択'
+              : '南（自分）のスコアを確認 · 違う場合は正しいカードをタップ'}
           </p>
 
           {/* 卓配置: 北 / 西・東 / 南 */}

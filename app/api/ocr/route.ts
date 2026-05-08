@@ -10,26 +10,29 @@ const MAX_SIZE = 20 * 1024 * 1024
 const OCR_PROMPT = `この画像は全自動麻雀卓（AMOS REXX IIIなど）の得点表示パネルです。
 プレイヤーが自分の手前側にあるパネルを撮影しています。
 
-【パネルの構造】
-- 中央の大きな数字: 撮影者自身（south）の得点
-- 周囲の小さな数字3つ: 他の3プレイヤー（north・east・west）の得点
-- 位置の目安: 大きい数字の上側がnorth、左がwest、右がeast
+【south（自分の得点）の見分け方 ★最重要★】
+パネルには以下の2種類の表示エリアがあります：
 
-【数字の読み方】
-パネルは「万・千・百」単位で表示されます。
-表示値をそのまま読んだあと、×100 して実際の点数に変換してください。
-例:
-  表示 0450 → 実際の点数 45,000
-  表示 0250 → 実際の点数 25,000
-  表示 0050 → 実際の点数  5,000
-  表示 0270 → 実際の点数 27,000
+(A) メイン表示 ＝ 撮影者自身（south）の得点
+    - 他より物理的に大きいLEDディスプレイ
+    - 「万」「千」「百」などの桁ラベルが表示の下または横にある
+    - パネルの中央下寄りに配置されることが多い
 
-【変換ルール】
-- 読み取った4桁の表示値 × 100 = 実際の点数（valueに入れる値）
-- 4人の実際の点数の合計は通常 100,000点
-- 合計が大きくずれる場合は confidence を low にする
+(B) サブ表示 ×3 ＝ 対戦相手3名の得点
+    - (A)より小さいLEDディスプレイ
+    - 桁ラベルがない
+    - パネル上部や左右に配置される
 
-【出力形式】JSONのみ返してください。説明文不要。
+まず (A) を見つけてその値を south に割り当ててください。
+(B) の3つは大きい数字の上側 → north、左 → west、右 → east に割り当てます。
+
+【数字の読み取りと変換】
+表示は「万・千・百」単位のため、読み取った4桁の表示値 × 100 = 実際の点数です。
+  表示 0450 → 45,000点
+  表示 0250 → 25,000点
+  表示 0050 →  5,000点
+
+【出力形式】JSONのみ。説明文不要。
 {
   "scores": [
     {"value": 45000, "position": "south"},
@@ -40,16 +43,17 @@ const OCR_PROMPT = `この画像は全自動麻雀卓（AMOS REXX IIIなど）�
   "confidence": "high|medium|low"
 }
 
-【注意】
-- value は変換後の実際の点数（整数、例: 45000）
-- 読み取れない場合は value を null
-- 7セグメントLEDの誤読に注意（0と6と8、1と7など）
+【注意事項】
+- value は ×100 変換後の整数（例: 45000）
+- 4人の合計は通常 100,000点。大きくずれる場合 confidence を low に
+- 7セグメントLEDの誤読注意: 0と6と8、1と7
 - 必ずJSONのみ返すこと`
 
 const OCR_RETRY_PROMPT = OCR_PROMPT + `
 
-【再試行】数字を1桁ずつ丁寧に確認してください。
-特に注意: 0と6と8の区別、1と7の区別、×100 変換を忘れずに。`
+【再試行】
+「万・千・百」ラベルが付いているメイン表示を必ず south にしてください。
+数字は1桁ずつ確認し、×100変換を忘れずに。`
 
 async function callOcr(
   base64: string,
@@ -88,20 +92,38 @@ function parseOcrResponse(text: string) {
     }))
   }
 
-  // スコアが表示値のまま（100未満）の場合は×100して補正
-  // 例: Claudeが 0450 をそのまま返した場合 → 45000 に変換
+  type ScoreEntry = { value: number | null; position: string }
+
   if (Array.isArray(parsed.scores)) {
-    parsed.scores = parsed.scores.map((s: { value: number | null; position: string }) => {
+    // ×100 変換: 最大値が 1000 以下なら表示値のまま返ってきたと判断
+    const maxRaw = Math.max(...(parsed.scores as ScoreEntry[])
+      .map(s => s.value ?? 0)
+      .filter(v => v > 0))
+    const needsConversion = maxRaw > 0 && maxRaw <= 1000
+
+    parsed.scores = (parsed.scores as ScoreEntry[]).map(s => {
       if (s.value === null || typeof s.value !== 'number') return s
-      // 最大スコアが 1000 以下なら ×100 変換が必要と判断
-      const maxScore = Math.max(...parsed.scores
-        .map((x: { value: number | null }) => x.value ?? 0)
-        .filter((v: number) => v > 0))
-      const needsConversion = maxScore <= 1000
       const converted = needsConversion ? s.value * 100 : s.value
-      // 100点単位に丸める
       return { ...s, value: Math.round(converted / 100) * 100 }
     })
+
+    // south の割当チェック:
+    // south が返ってきていない or south が null の場合、
+    // 最大値の score を south に割り当て直す（メイン表示が最大の場合が多いため）
+    const scores = parsed.scores as ScoreEntry[]
+    const hasSouth = scores.some(s => s.position === 'south' && s.value !== null)
+    if (!hasSouth) {
+      const maxVal = Math.max(...scores.map(s => s.value ?? 0))
+      let reassigned = false
+      parsed.scores = scores.map(s => {
+        if (!reassigned && s.value === maxVal) {
+          reassigned = true
+          return { ...s, position: 'south' }
+        }
+        return s
+      })
+      parsed.confidence = 'medium'
+    }
   }
 
   return parsed
