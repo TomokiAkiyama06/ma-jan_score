@@ -29,8 +29,17 @@ export default async function RecordPage() {
   ])
 
   const presets = (presetsData ?? []) as Preset[]
-  const activeSession = activeSessionData?.[0] as (Session & { preset: Preset }) | undefined
+  let activeSession = activeSessionData?.[0] as (Session & { preset: Preset }) | undefined
   const needsNewSession = isNewSessionNeeded(lastHanchan?.played_at ?? null)
+
+  // フリーモードが5時間超過していたら自動クローズ
+  if (activeSession && needsNewSession) {
+    await supabase
+      .from('sessions')
+      .update({ ended_at: new Date().toISOString() })
+      .eq('id', activeSession.id)
+    activeSession = undefined
+  }
 
   // アクティブセッション内の半荘数（場替えリマインダー用）
   let hanchansInSession = 0
