@@ -30,12 +30,12 @@ async function compressImage(file: File): Promise<File> {
   return new Promise(resolve => {
     const img = new Image()
     img.onload = () => {
-      const scale = Math.min(1, 1280 / Math.max(img.width, img.height))
+      const scale = Math.min(1, 1600 / Math.max(img.width, img.height))
       const canvas = document.createElement('canvas')
       canvas.width = Math.round(img.width * scale)
       canvas.height = Math.round(img.height * scale)
       canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob(blob => resolve(blob ? new File([blob], file.name, { type: 'image/jpeg' }) : file), 'image/jpeg', 0.85)
+      canvas.toBlob(blob => resolve(blob ? new File([blob], file.name, { type: 'image/jpeg' }) : file), 'image/jpeg', 0.92)
     }
     img.onerror = () => resolve(file)
     img.src = URL.createObjectURL(file)
@@ -111,8 +111,8 @@ export function SetRecordForm({ session, hanchans, userId }: Props) {
     setOcrStep('compressing')
     setOcrData(d => d.map(x => ({ ...x, value: null })))
     setOcrConfidence(null)
-    let compressed = file
-    if (file.size > 500 * 1024) compressed = await compressImage(file)
+    // 常にCanvas変換してEXIF回転をピクセルに焼き込む
+    const compressed = await compressImage(file)
     setOcrStep('analyzing')
     try {
       const fd = new FormData()

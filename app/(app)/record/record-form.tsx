@@ -42,7 +42,7 @@ const OCR_STEP_LABEL: Record<OcrStep, string> = {
   done: '解析完了',
 }
 
-async function compressImage(file: File, maxPx = 1280, quality = 0.85): Promise<File> {
+async function compressImage(file: File, maxPx = 1600, quality = 0.92): Promise<File> {
   return new Promise((resolve) => {
     const img = new Image()
     img.onload = () => {
@@ -136,8 +136,8 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession, ha
     setOcrConfidence(null)
     setMyIndex(null)
 
-    let compressed = file
-    if (file.size > 500 * 1024) compressed = await compressImage(file)
+    // サイズに関係なく必ずCanvas変換（EXIFの回転情報をピクセルに焼き込む）
+    const compressed = await compressImage(file)
 
     setOcrStep('analyzing')
     try {
@@ -296,6 +296,9 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession, ha
                 <span className="text-zinc-600 text-xs">ライブラリから</span>
               </button>
             </div>
+            <p className="text-[11px] text-zinc-600 text-center px-2">
+              💡 自分側のパネルを正面から撮影。中央の大きな数字が自分のスコアです。
+            </p>
             <button onClick={() => { setManualMode(true); setOcrData(d => d.map(x => ({ ...x, value: null }))) }} className="w-full flex items-center justify-center gap-2 py-3 text-zinc-500 text-sm hover:text-zinc-300 transition-colors">
               <Keyboard size={16} />手動で入力する
             </button>
