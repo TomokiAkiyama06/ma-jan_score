@@ -42,7 +42,7 @@ const OCR_STEP_LABEL: Record<OcrStep, string> = {
   done: '解析完了',
 }
 
-async function compressImage(file: File, maxPx = 1280, quality = 0.85): Promise<File> {
+async function compressImage(file: File, maxPx = 1600, quality = 0.92): Promise<File> {
   return new Promise((resolve) => {
     const img = new Image()
     img.onload = () => {
@@ -137,7 +137,7 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession, ha
     setMyIndex(null)
 
     let compressed = file
-    if (file.size > 500 * 1024) compressed = await compressImage(file)
+    if (file.size > 2 * 1024 * 1024) compressed = await compressImage(file)
 
     setOcrStep('analyzing')
     try {
