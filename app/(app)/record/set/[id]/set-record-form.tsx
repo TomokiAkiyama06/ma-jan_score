@@ -111,8 +111,8 @@ export function SetRecordForm({ session, hanchans, userId }: Props) {
     setOcrStep('compressing')
     setOcrData(d => d.map(x => ({ ...x, value: null })))
     setOcrConfidence(null)
-    let compressed = file
-    if (file.size > 2 * 1024 * 1024) compressed = await compressImage(file)
+    // 常にCanvas変換してEXIF回転をピクセルに焼き込む
+    const compressed = await compressImage(file)
     setOcrStep('analyzing')
     try {
       const fd = new FormData()

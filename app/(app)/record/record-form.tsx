@@ -136,8 +136,8 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession, ha
     setOcrConfidence(null)
     setMyIndex(null)
 
-    let compressed = file
-    if (file.size > 2 * 1024 * 1024) compressed = await compressImage(file)
+    // サイズに関係なく必ずCanvas変換（EXIFの回転情報をピクセルに焼き込む）
+    const compressed = await compressImage(file)
 
     setOcrStep('analyzing')
     try {
@@ -296,6 +296,9 @@ export function RecordForm({ presets, userId, activeSession, needsNewSession, ha
                 <span className="text-zinc-600 text-xs">ライブラリから</span>
               </button>
             </div>
+            <p className="text-[11px] text-zinc-600 text-center px-2">
+              💡 縦持ちで卓の真上から撮影すると精度が上がります。自分の得点が画面の下側に来るように。
+            </p>
             <button onClick={() => { setManualMode(true); setOcrData(d => d.map(x => ({ ...x, value: null }))) }} className="w-full flex items-center justify-center gap-2 py-3 text-zinc-500 text-sm hover:text-zinc-300 transition-colors">
               <Keyboard size={16} />手動で入力する
             </button>
