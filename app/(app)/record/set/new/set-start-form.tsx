@@ -62,7 +62,6 @@ export function SetStartForm({ presets, userId }: Props) {
         hourly_rate: hourlyRate,
         reserve_fee: reserveFee,
         chip_rate: chipRate,
-        split_method: 'per_hanchan_winner',
       })
       .select('id')
       .single()

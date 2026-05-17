@@ -7,11 +7,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
-import {
-  calculateSetFee, calculateFeePerHanchan, splitFee,
-  summarizePerParticipant, calculateRank
-} from '@/lib/calculations'
-import type { Preset, Session, Hanchan, SplitMethod } from '@/lib/types'
+import { calculateSetFee, calculatePerHanchanFee, splitFee } from '@/lib/calculations'
+import type { Preset, Session, Hanchan } from '@/lib/types'
 
 type Props = { session: Session & { preset: Preset }; hanchans: Hanchan[]; userId: string }
 
@@ -25,7 +22,6 @@ export function SetEndFlow({ session, hanchans, userId }: Props) {
   const [chips, setChips] = useState<Record<string, number>>(
     Object.fromEntries(participants.map(p => [p, 0]))
   )
-  const [splitMethod, setSplitMethod] = useState<SplitMethod>('per_hanchan_winner')
   const [saving, setSaving] = useState(false)
 
   const now = new Date()
@@ -33,12 +29,12 @@ export function SetEndFlow({ session, hanchans, userId }: Props) {
   const elapsedMs = now.getTime() - new Date(session.started_at).getTime()
   const elapsedHours = elapsedMs / (1000 * 60 * 60)
   const billedHours = Math.ceil(elapsedHours * 2) / 2
-  const feePerHanchan = hanchans.length > 0 ? Math.round(totalFee / hanchans.length) : 0
+  const feePerHanchan = calculatePerHanchanFee(totalFee, hanchans.length)
 
   const chipTotal = Object.values(chips).reduce((a, b) => a + b, 0)
 
   // 場代分担プレビュー
-  const previewSession = { ...session, total_fee: totalFee, split_method: splitMethod, participant_chips: chips }
+  const previewSession = { ...session, total_fee: totalFee, participant_chips: chips }
   const feeShare = splitFee(previewSession, hanchans)
 
   async function handleFinish() {
@@ -48,7 +44,6 @@ export function SetEndFlow({ session, hanchans, userId }: Props) {
       ended_at: now.toISOString(),
       total_fee: totalFee,
       participant_chips: chips,
-      split_method: splitMethod,
     }).eq('id', session.id)
 
     if (error) { toast.error('保存に失敗しました'); setSaving(false); return }
@@ -153,29 +148,12 @@ export function SetEndFlow({ session, hanchans, userId }: Props) {
           <span>合計</span>
           <span>{totalFee.toLocaleString()}円</span>
         </div>
-        <p className="text-xs text-zinc-500">{hanchans.length}半荘 ・ 1半荘あたり約{feePerHanchan.toLocaleString()}円</p>
-      </div>
-
-      {/* 場代分担方式 */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-zinc-300">場代の負担方法</p>
-        {([
-          ['per_hanchan_winner', '半荘ごとの1位が負担（推奨）'],
-          ['equal', '均等割り'],
-        ] as [SplitMethod, string][]).map(([method, label]) => (
-          <button
-            key={method}
-            onClick={() => setSplitMethod(method)}
-            className={`w-full rounded-lg border p-3 text-left text-sm transition-colors ${splitMethod === method ? 'border-zinc-50 bg-zinc-800 text-zinc-100' : 'border-zinc-700 bg-zinc-900 text-zinc-400'}`}
-          >
-            {label}
-          </button>
-        ))}
+        <p className="text-xs text-zinc-500">{hanchans.length}半荘 ・ 1半荘あたり {feePerHanchan.toLocaleString()}円（100円単位切り上げ）</p>
       </div>
 
       {/* 場代プレビュー */}
       <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
-        <p className="text-xs text-zinc-500 mb-1">各人の場代負担（プレビュー）</p>
+        <p className="text-xs text-zinc-500 mb-1">各人の場代負担（半荘ごとのトップが負担）</p>
         {participants.map(name => (
           <div key={name} className="flex justify-between text-sm">
             <span className="text-zinc-300">{name}</span>

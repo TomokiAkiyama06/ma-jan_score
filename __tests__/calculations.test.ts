@@ -2,12 +2,17 @@ import { describe, it, expect } from 'vitest'
 import {
   calculateRank,
   calculateProfit,
+  calculateProfitsForHanchan,
   calcKpi,
   isNewSessionNeeded,
   formatProfit,
   calcCumulative,
+  calculatePerHanchanFee,
+  calculateTransfers,
+  splitFee,
+  summarizePerParticipant,
 } from '@/lib/calculations'
-import type { Hanchan, Preset, HanchanWithProfit } from '@/lib/types'
+import type { Hanchan, Preset, HanchanWithProfit, Session, ParticipantSummary } from '@/lib/types'
 
 const basePreset: Preset = {
   id: 'p1',
@@ -53,7 +58,6 @@ describe('calculateRank', () => {
   })
 
   it('同点は席順（インデックス小さい方が上位）', () => {
-    // index 1 と index 2 が同点25000 → index 1 が2位
     expect(calculateRank([30000, 25000, 25000, 20000], 1)).toBe(2)
     expect(calculateRank([30000, 25000, 25000, 20000], 2)).toBe(3)
   })
@@ -64,113 +68,325 @@ describe('calculateRank', () => {
   })
 })
 
-describe('calculateProfit', () => {
-  it('1位・オカあり・チップなしの収支を正しく計算する', () => {
-    // scores[0]=30000, rank=1, preset: rate=50, uma_first=20, starting=25000, return=30000, oka=true
-    // baseProfit = (30000 - 25000) / 1000 * 50 = 250
-    // uma = 20 * 50 = 1000
-    // oka = (30000 - 25000) * 4 / 1000 * 50 = 1000
-    // chips = 0
-    // total = 250 + 1000 + 1000 = 2250
-    const h = { ...baseHanchan, scores: [30000, 25000, 25000, 20000], my_seat_index: 0, my_rank: 1, chip_count: 0 }
-    expect(calculateProfit(h, basePreset)).toBe(2250)
+describe('calculateProfitsForHanchan（ゼロサム保証）', () => {
+  it('合計が常に0になる（基本ケース）', () => {
+    const profits = calculateProfitsForHanchan([30000, 25000, 25000, 20000], basePreset)
+    expect(profits.reduce((a, b) => a + b, 0)).toBe(0)
   })
 
-  it('4位の収支を正しく計算する（オカなし・チップなし）', () => {
-    // scores[3]=20000, rank=4
-    // baseProfit = (20000 - 25000) / 1000 * 50 = -250
-    // uma = -20 * 50 = -1000
-    // oka = 0 (4位)
-    // total = -1250
-    const h = { ...baseHanchan, scores: [30000, 25000, 25000, 20000], my_seat_index: 3, my_rank: 4, chip_count: 0 }
-    expect(calculateProfit(h, basePreset)).toBe(-1250)
+  it('1位は返し点と原点の差×4＋ウマを受け取る（基本ケース）', () => {
+    // baseRef = return = 30000
+    // P1 (25000, 2位): base=-250, uma=500 → 250
+    // P2 (25000, 3位): base=-250, uma=-500 → -750
+    // P3 (20000, 4位): base=-500, uma=-1000 → -1500
+    // 他3人合計 = -2000 → P0 (1位) = +2000
+    expect(calculateProfitsForHanchan([30000, 25000, 25000, 20000], basePreset))
+      .toEqual([2000, 250, -750, -1500])
   })
 
-  it('チップがある場合に正しく加算される', () => {
-    const h = { ...baseHanchan, scores: [30000, 25000, 25000, 20000], my_seat_index: 0, my_rank: 1, chip_count: 3 }
-    // base=2250, chips=3*100=300 → 2550
-    expect(calculateProfit(h, basePreset)).toBe(2550)
+  it('ユーザー例: rate=100, 返し30000, 箱下OFF, [35000,20000,65000,-20000]', () => {
+    const preset: Preset = {
+      ...basePreset, rate: 100, hako_shita_enabled: false,
+    }
+    // P0 (35000, 2位): base=+500, uma=+1000 → +1500
+    // P1 (20000, 3位): base=-1000, uma=-1000 → -2000
+    // P2 (65000, 1位): ゼロサム調整 → +5500
+    // P3 (-20000→0, 4位): base=-3000, uma=-2000 → -5000
+    expect(calculateProfitsForHanchan([35000, 20000, 65000, -20000], preset))
+      .toEqual([1500, -2000, 5500, -5000])
   })
 
-  it('チップがマイナスの場合', () => {
-    const h = { ...baseHanchan, scores: [30000, 25000, 25000, 20000], my_seat_index: 0, my_rank: 1, chip_count: -2 }
-    // base=2250, chips=-2*100=-200 → 2050
-    expect(calculateProfit(h, basePreset)).toBe(2050)
+  it('箱下OFF: マイナス素点の負担軽減分はトップが吸収する', () => {
+    const preset = { ...basePreset, hako_shita_enabled: false }
+    // scores=[52000, 26000, 25000, -3000]
+    // P3 effective=0, base=-1500, uma=-1000 → -2500
+    // P1 base=-200, uma=500 → 300
+    // P2 base=-250, uma=-500 → -750
+    // 他3人合計 = -2950 → P0(1位) = +2950
+    expect(calculateProfitsForHanchan([52000, 26000, 25000, -3000], preset))
+      .toEqual([2950, 300, -750, -2500])
   })
 
-  it('okaが無効の場合オカを加算しない', () => {
+  it('箱下ON: マイナス素点をそのまま計上、ゼロサム成立', () => {
+    const preset = { ...basePreset, hako_shita_enabled: true }
+    // P3 base=-1650, uma=-1000 → -2650
+    // 他3人合計 = 300 - 750 - 2650 = -3100 → P0 = +3100
+    expect(calculateProfitsForHanchan([52000, 26000, 25000, -3000], preset))
+      .toEqual([3100, 300, -750, -2650])
+  })
+
+  it('オカ無効: baseRef=starting_score、1位は他3人の合計のみ吸収', () => {
     const preset = { ...basePreset, oka_enabled: false }
-    const h = { ...baseHanchan, scores: [30000, 25000, 25000, 20000], my_seat_index: 0, my_rank: 1, chip_count: 0 }
-    // base=250, uma=1000, oka=0 → 1250
-    expect(calculateProfit(h, preset)).toBe(1250)
+    // baseRef=25000
+    // P1 base=0, uma=500 → 500
+    // P2 base=0, uma=-500 → -500
+    // P3 base=-250, uma=-1000 → -1250
+    // 他3人合計 = -1250 → P0(1位) = +1250
+    expect(calculateProfitsForHanchan([30000, 25000, 25000, 20000], preset))
+      .toEqual([1250, 500, -500, -1250])
+  })
+})
+
+describe('calculateProfit（席指定の最終収支）', () => {
+  it('1位・チップなしの収支', () => {
+    const h = { ...baseHanchan, my_seat_index: 0, my_rank: 1, chip_count: 0 }
+    expect(calculateProfit(h, basePreset)).toBe(2000)
+  })
+
+  it('4位・チップなしの収支', () => {
+    const h = { ...baseHanchan, my_seat_index: 3, my_rank: 4, chip_count: 0 }
+    expect(calculateProfit(h, basePreset)).toBe(-1500)
+  })
+
+  it('チップが正しく加算される', () => {
+    const h = { ...baseHanchan, my_seat_index: 0, my_rank: 1, chip_count: 3 }
+    expect(calculateProfit(h, basePreset)).toBe(2000 + 300)
+  })
+
+  it('チップがマイナスでも加算される', () => {
+    const h = { ...baseHanchan, my_seat_index: 0, my_rank: 1, chip_count: -2 }
+    expect(calculateProfit(h, basePreset)).toBe(2000 - 200)
   })
 
   it('2位のウマを正しく計算する', () => {
-    const h = { ...baseHanchan, scores: [30000, 25000, 25000, 20000], my_seat_index: 1, my_rank: 2, chip_count: 0 }
-    // baseProfit = (25000 - 25000) / 1000 * 50 = 0
-    // uma = 10 * 50 = 500
-    // oka = 0 (2位)
-    expect(calculateProfit(h, basePreset)).toBe(500)
-  })
-
-  it('原点ちょうどで1位ならオカのみ', () => {
-    // score=25000 = starting_score → baseProfit=0
-    const h = { ...baseHanchan, scores: [25000, 25000, 25000, 25000], my_seat_index: 0, my_rank: 1, chip_count: 0 }
-    // uma=1000, oka=1000 → 2000
-    expect(calculateProfit(h, basePreset)).toBe(2000)
+    const h = { ...baseHanchan, my_seat_index: 1, my_rank: 2, chip_count: 0 }
+    expect(calculateProfit(h, basePreset)).toBe(250)
   })
 })
 
-describe('四捨五入計算', () => {
-  it('素点差が端数あり（下位500点未満）は切り捨て', () => {
-    // score=27300: diff=2300, Math.round(2300/1000)=2, baseProfit=2*50=100
-    const h = { ...baseHanchan, scores: [27300, 26000, 25000, 21700], my_seat_index: 0, my_rank: 1, chip_count: 0 }
-    const profit = calculateProfit(h, basePreset)
-    // base=100, uma=1000, oka=1000 → 2100
-    expect(profit).toBe(2100)
+describe('1000点単位四捨五入', () => {
+  it('素点差の端数を1000点単位で四捨五入する', () => {
+    // [27300, 26000, 25000, 21700]
+    // P0 base = round(-2.7)*50 = -150, uma=1000 → 850
+    // P1 base = round(-4.0)*50 = -200, uma=500 → 300
+    // P2 base = round(-5.0)*50 = -250, uma=-500 → -750
+    // P3 base = round(-8.3)*50 = -400, uma=-1000 → -1400
+    // 他3人合計=-1850 → P0=1850
+    const h = { ...baseHanchan, scores: [27300, 26000, 25000, 21700], my_seat_index: 0, my_rank: 1 }
+    expect(calculateProfit(h, basePreset)).toBe(1850)
   })
 
-  it('素点差が端数あり（500点以上）は切り上げ', () => {
-    // score=27500: diff=2500, Math.round(2500/1000)=3 (四捨五入), baseProfit=3*50=150
-    const h = { ...baseHanchan, scores: [27500, 25000, 25000, 22500], my_seat_index: 0, my_rank: 1, chip_count: 0 }
-    const profit = calculateProfit(h, basePreset)
-    // base=150, uma=1000, oka=1000 → 2150
-    expect(profit).toBe(2150)
-  })
-
-  it('マイナス端数も四捨五入', () => {
-    // score=22700: diff=-2300, Math.round(-2300/1000)=Math.round(-2.3)=-2, baseProfit=-2*50=-100
-    const h = { ...baseHanchan, scores: [27300, 25000, 25000, 22700], my_seat_index: 3, my_rank: 4, chip_count: 0 }
-    const profit = calculateProfit(h, basePreset)
-    // base=-100, uma=-1000, oka=0 → -1100
-    expect(profit).toBe(-1100)
+  it('マイナス側の四捨五入も働く（4位）', () => {
+    // [27300, 25000, 25000, 22700]
+    // P3 base = round(-7.3)*50 = -350, uma=-1000 → -1350
+    const h = { ...baseHanchan, scores: [27300, 25000, 25000, 22700], my_seat_index: 3, my_rank: 4 }
+    expect(calculateProfit(h, basePreset)).toBe(-1350)
   })
 })
 
-describe('箱下計算', () => {
-  it('箱下あり: マイナス素点をそのまま計算', () => {
-    const preset = { ...basePreset, hako_shita_enabled: true }
-    // score=-3000: diff=-3000-25000=-28000, Math.round(-28)=-28, base=-28*50=-1400
-    const h = { ...baseHanchan, scores: [52000, 26000, 25000, -3000], my_seat_index: 3, my_rank: 4, chip_count: 0 }
-    const profit = calculateProfit(h, preset)
-    // base=-1400, uma=-1000, oka=0 → -2400
-    expect(profit).toBe(-2400)
+describe('calculatePerHanchanFee（1半荘あたりの場代）', () => {
+  it('割り切れる場合は素直に総額÷半荘数', () => {
+    expect(calculatePerHanchanFee(6000, 6)).toBe(1000)
   })
 
-  it('箱下なし: マイナス素点を0として計算', () => {
-    const preset = { ...basePreset, hako_shita_enabled: false }
-    // score=-3000 → effectiveScore=0: diff=0-25000=-25000, Math.round(-25)=-25, base=-25*50=-1250
-    const h = { ...baseHanchan, scores: [52000, 26000, 25000, -3000], my_seat_index: 3, my_rank: 4, chip_count: 0 }
-    const profit = calculateProfit(h, preset)
-    // base=-1250, uma=-1000, oka=0 → -2250
-    expect(profit).toBe(-2250)
+  it('100円未満の端数は切り上げる', () => {
+    // 6250 / 6 = 1041.67 → 1100 (切り上げ)
+    expect(calculatePerHanchanFee(6250, 6)).toBe(1100)
+    // 6800 / 6 = 1133.33 → 1200
+    expect(calculatePerHanchanFee(6800, 6)).toBe(1200)
   })
 
-  it('箱下なし: プラスの素点には影響なし', () => {
-    const preset = { ...basePreset, hako_shita_enabled: false }
-    const h = { ...baseHanchan, scores: [30000, 25000, 25000, 20000], my_seat_index: 0, my_rank: 1, chip_count: 0 }
-    // 正の点数は影響なし → 通常と同じ 2250
-    expect(calculateProfit(h, preset)).toBe(2250)
+  it('半荘0または総額0は0', () => {
+    expect(calculatePerHanchanFee(0, 6)).toBe(0)
+    expect(calculatePerHanchanFee(6000, 0)).toBe(0)
+  })
+
+  it('切り上げにより合計が総額を下回らない', () => {
+    const totalFee = 7000
+    const hanchanCount = 6
+    const perFee = calculatePerHanchanFee(totalFee, hanchanCount)
+    expect(perFee * hanchanCount).toBeGreaterThanOrEqual(totalFee)
+  })
+})
+
+describe('splitFee（per_hanchan_winner 固定・100円単位）', () => {
+  const baseSession: Session = {
+    id: 's1',
+    user_id: 'u1',
+    preset_id: 'p1',
+    mode: 'set',
+    started_at: '2024-01-01T10:00:00Z',
+    ended_at: null,
+    location_memo: null,
+    participants: ['A', 'B', 'C', 'D'],
+    total_fee: 7000,
+    created_at: '2024-01-01T10:00:00Z',
+  }
+
+  function makeHanchan(id: string, scores: number[], seats: string[]): Hanchan {
+    return { ...baseHanchan, id, scores, participants_per_seat: seats }
+  }
+
+  it('各半荘のトップが1半荘単価ぶん負担', () => {
+    // totalFee=7000, 6半荘 → perFee = ceil(7000/6/100)*100 = ceil(11.67)*100 = 1200
+    // 6半荘すべてAが1位 → A=7200, 他=0
+    const hanchans = Array.from({ length: 6 }, (_, i) =>
+      makeHanchan(`h${i}`, [40000, 25000, 20000, 15000], ['A', 'B', 'C', 'D']))
+    const share = splitFee({ ...baseSession }, hanchans)
+    expect(share).toEqual({ A: 7200, B: 0, C: 0, D: 0 })
+  })
+
+  it('1位が分散している場合は回数で按分', () => {
+    // perFee=1200。A=3回, B=2回, C=1回 → A=3600, B=2400, C=1200, D=0
+    const hanchans = [
+      ...Array.from({ length: 3 }, (_, i) => makeHanchan(`h${i}`, [40000, 25000, 20000, 15000], ['A', 'B', 'C', 'D'])),
+      ...Array.from({ length: 2 }, (_, i) => makeHanchan(`hb${i}`, [25000, 40000, 20000, 15000], ['A', 'B', 'C', 'D'])),
+      makeHanchan('hc', [25000, 20000, 40000, 15000], ['A', 'B', 'C', 'D']),
+    ]
+    const share = splitFee({ ...baseSession }, hanchans)
+    expect(share).toEqual({ A: 3600, B: 2400, C: 1200, D: 0 })
+  })
+
+  it('participants_per_seat 未設定の半荘は無視される', () => {
+    const hanchans = [
+      makeHanchan('h1', [40000, 25000, 20000, 15000], ['A', 'B', 'C', 'D']),
+      { ...baseHanchan, id: 'h2', scores: [40000, 25000, 20000, 15000], participants_per_seat: null },
+    ]
+    const share = splitFee({ ...baseSession, total_fee: 1200 }, hanchans)
+    // perFee = ceil(1200/2/100)*100 = 600。Aが1半荘だけ1位 → A=600
+    expect(share).toEqual({ A: 600, B: 0, C: 0, D: 0 })
+  })
+})
+
+describe('calculateTransfers（1000円単位）', () => {
+  function makeSummary(participant: string, scoreProfit: number, topCount = 0): ParticipantSummary {
+    return {
+      participant, scoreProfit, chipCount: 0, chipProfit: 0,
+      feeShare: 0, netProfit: scoreProfit, hanchanCount: 0, ranks: [], topCount,
+    }
+  }
+
+  it('1000円単位で送金が生成される（ピッタリ）', () => {
+    // 残高 [A=5000, B=2000, C=-3000, D=-4000] (合計0)
+    // グリーディマッチング: 最大マイナスから最大プラスへ
+    const summaries = [
+      makeSummary('A', 5000, 2),
+      makeSummary('B', 2000, 1),
+      makeSummary('C', -3000, 0),
+      makeSummary('D', -4000, 0),
+    ]
+    const transfers = calculateTransfers(summaries)
+    expect(transfers).toEqual([
+      { from: 'D', to: 'A', amount: 4000 },
+      { from: 'C', to: 'B', amount: 2000 },
+      { from: 'C', to: 'A', amount: 1000 },
+    ])
+  })
+
+  it('残高は1000円単位に四捨五入され、ゼロサム崩れはトップ最多者が吸収', () => {
+    // A=5400, B=2100, C=-3700, D=-3800 (合計0)
+    // 丸め: A=5000, B=2000, C=-4000, D=-4000 (合計-1000)
+    // トップ最多=A → A=6000 (合計0)
+    const summaries = [
+      makeSummary('A', 5400, 2),
+      makeSummary('B', 2100, 1),
+      makeSummary('C', -3700, 0),
+      makeSummary('D', -3800, 0),
+    ]
+    const transfers = calculateTransfers(summaries)
+    expect(transfers).toEqual([
+      { from: 'C', to: 'A', amount: 4000 },
+      { from: 'D', to: 'A', amount: 2000 },
+      { from: 'D', to: 'B', amount: 2000 },
+    ])
+  })
+
+  it('トップ最多が複数なら1000円単位で均等振り分け', () => {
+    // A=2400(top2), B=2400(top2), C=-2400, D=-2400 (合計0)
+    // 丸め: A=2000, B=2000, C=-2000, D=-2000 (合計0)
+    // 補正不要
+    const summaries = [
+      makeSummary('A', 2400, 2),
+      makeSummary('B', 2400, 2),
+      makeSummary('C', -2400, 0),
+      makeSummary('D', -2400, 0),
+    ]
+    const transfers = calculateTransfers(summaries)
+    expect(transfers).toEqual([
+      { from: 'C', to: 'B', amount: 2000 },
+      { from: 'D', to: 'A', amount: 2000 },
+    ])
+  })
+
+  it('500円未満は送金しない', () => {
+    // 全員 ±300円 → 全員0扱い
+    const summaries = [
+      makeSummary('A', 300, 1),
+      makeSummary('B', 300, 0),
+      makeSummary('C', -300, 0),
+      makeSummary('D', -300, 0),
+    ]
+    expect(calculateTransfers(summaries)).toEqual([])
+  })
+
+  it('全員topCount=0の場合は participants 先頭が吸収', () => {
+    // A=600, B=600, C=-600, D=-600 (全員topCount=0)
+    // 丸め: A=1000, B=1000, C=-1000, D=-1000 (合計0、補正不要)
+    const summaries = [
+      makeSummary('A', 600, 0),
+      makeSummary('B', 600, 0),
+      makeSummary('C', -600, 0),
+      makeSummary('D', -600, 0),
+    ]
+    const transfers = calculateTransfers(summaries)
+    expect(transfers).toEqual([
+      { from: 'C', to: 'B', amount: 1000 },
+      { from: 'D', to: 'A', amount: 1000 },
+    ])
+  })
+
+  it('空配列を返す', () => {
+    expect(calculateTransfers([])).toEqual([])
+  })
+})
+
+describe('summarizePerParticipant（場代・チップ含む）', () => {
+  const session: Session = {
+    id: 's1',
+    user_id: 'u1',
+    preset_id: 'p1',
+    mode: 'set',
+    started_at: '2024-01-01T10:00:00Z',
+    ended_at: null,
+    location_memo: null,
+    participants: ['A', 'B', 'C', 'D'],
+    total_fee: 6000,
+    chip_rate: 100,
+    participant_chips: { A: 2, B: -2, C: 0, D: 0 },
+    created_at: '2024-01-01T10:00:00Z',
+  }
+
+  it('netProfit = scoreProfit + chipProfit - feeShare', () => {
+    // 6半荘、すべて A が1位（scores=[40000,25000,20000,15000]）
+    const hanchans: Hanchan[] = Array.from({ length: 6 }, (_, i) => ({
+      ...baseHanchan,
+      id: `h${i}`,
+      scores: [40000, 25000, 20000, 15000],
+      participants_per_seat: ['A', 'B', 'C', 'D'],
+    }))
+    // 1半荘あたりの A の収支:
+    //   baseRef=30000, A base=(40000-30000)/1000*50=500, uma=1000 → 1500
+    //     他: B=-250+500=250, C=-500-500=-1000, D=-750-1000=-1750
+    //     他合計=-2500 → A=+2500
+    // 6半荘で A scoreProfit = 15000、各他は単純に6倍
+    //   B: 250 * 6 = 1500
+    //   C: -1000 * 6 = -6000
+    //   D: -1750 * 6 = -10500
+    // 場代: perFee = ceil(6000/6/100)*100 = 1000、A が6回1位 → A feeShare = 6000
+    // チップ: A=2*100=200, B=-2*100=-200
+    const summaries = summarizePerParticipant(session, hanchans, basePreset)
+    const a = summaries.find(s => s.participant === 'A')!
+    expect(a.scoreProfit).toBe(15000)
+    expect(a.chipProfit).toBe(200)
+    expect(a.feeShare).toBe(6000)
+    expect(a.netProfit).toBe(15000 + 200 - 6000)
+    expect(a.topCount).toBe(6)
+
+    const b = summaries.find(s => s.participant === 'B')!
+    expect(b.scoreProfit).toBe(1500)
+    expect(b.chipProfit).toBe(-200)
+    expect(b.feeShare).toBe(0)
+    expect(b.netProfit).toBe(1300)
   })
 })
 
@@ -232,13 +448,13 @@ describe('calcKpi', () => {
 
   it('累計収支・平均着順・トップ率・ラス率を正しく計算する', () => {
     const hanchans = [
-      makeHanchan(1, 30000, 2250),
-      makeHanchan(2, 25000, 500),
-      makeHanchan(4, 20000, -1250),
+      makeHanchan(1, 30000, 2000),
+      makeHanchan(2, 25000, 250),
+      makeHanchan(4, 20000, -1500),
     ]
     const kpi = calcKpi(hanchans, [basePreset])
     expect(kpi.hanchanCount).toBe(3)
-    expect(kpi.totalProfit).toBeCloseTo(1500)
+    expect(kpi.totalProfit).toBeCloseTo(750)
     expect(kpi.avgRank).toBeCloseTo(7 / 3)
     expect(kpi.topRate).toBeCloseTo(100 / 3)
     expect(kpi.lastRate).toBeCloseTo(100 / 3)
