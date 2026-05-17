@@ -17,8 +17,6 @@ export type Preset = {
   created_at: string
 }
 
-export type SplitMethod = 'per_hanchan_winner' | 'equal' | 'manual'
-
 export type Session = {
   id: string
   user_id: string
@@ -35,8 +33,6 @@ export type Session = {
   chip_rate?: number | null
   total_fee?: number | null
   participant_chips?: Record<string, number> | null
-  split_method?: SplitMethod | null
-  manual_split?: Record<string, number> | null
   created_at: string
   preset?: Preset
 }
