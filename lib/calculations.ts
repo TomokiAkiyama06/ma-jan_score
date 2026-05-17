@@ -1,7 +1,7 @@
 import type {
   Hanchan, Preset, Session, HanchanWithProfit,
   KpiStats, MonthlyStats, RankDistribution, PresetStats, CumulativePoint,
-  ParticipantSummary, Transfer, SplitMethod
+  ParticipantSummary, Transfer
 } from './types'
 
 // ─── 着順計算 ─────────────────────────────────────────────
@@ -13,31 +13,40 @@ export function calculateRank(scores: number[], mySeatIndex: number): number {
   return sorted.findIndex(s => s.idx === mySeatIndex) + 1
 }
 
-// ─── 収支計算 ─────────────────────────────────────────────
+// ─── 収支計算（ゼロサム保証） ─────────────────────────────
 
-export function calculateProfitForSeat(score: number, rank: number, preset: Preset): number {
-  // 箱下なし: マイナスの素点は0として扱う（トップの取り分が減る）
+// 1半荘・4人分の収支を一括計算。
+// 1位以外は base+uma を独立計算し、1位は他3人の合計の符号反転で算出することで、
+// オカ・箱下のマイナス補填を1位が自動的に吸収する（=合計が常に0）。
+export function calculateProfitsForHanchan(scores: number[], preset: Preset): number[] {
+  const ranks = scores.map((_, i) => calculateRank(scores, i))
   const hakoShita = preset.hako_shita_enabled ?? true
-  const effectiveScore = hakoShita ? score : Math.max(0, score)
-
-  // 四捨五入: 素点差を1000点単位で丸めてからレートを掛ける
-  const baseProfit = Math.round((effectiveScore - preset.starting_score) / 1000) * preset.rate
-
+  // オカが有効なら return_score を基準点に。無効なら starting_score を基準点に。
+  const baseRef = (preset.oka_enabled ?? true) ? preset.return_score : preset.starting_score
   const umaArr = [preset.uma_first, preset.uma_second, preset.uma_third, preset.uma_fourth]
-  const uma = umaArr[rank - 1] * preset.rate
 
-  let oka = 0
-  if (preset.oka_enabled && rank === 1) {
-    // オカは原点と返しが1000点の倍数なので四捨五入不要
-    oka = (preset.return_score - preset.starting_score) * 4 / 1000 * preset.rate
+  const profits = scores.map((score, i) => {
+    const effectiveScore = hakoShita ? score : Math.max(0, score)
+    const base = Math.round((effectiveScore - baseRef) / 1000) * preset.rate
+    const uma = umaArr[ranks[i] - 1] * preset.rate
+    return base + uma
+  })
+
+  // 1位はゼロサムになるよう他3人の合計の符号反転で確定
+  const topIdx = ranks.indexOf(1)
+  if (topIdx !== -1) {
+    const othersSum = profits.reduce((s, p, i) => i === topIdx ? s : s + p, 0)
+    profits[topIdx] = -othersSum
   }
+  return profits
+}
 
-  return baseProfit + uma + oka
+export function calculateProfitForSeat(scores: number[], seatIndex: number, preset: Preset): number {
+  return calculateProfitsForHanchan(scores, preset)[seatIndex]
 }
 
 export function calculateProfit(hanchan: Hanchan, preset: Preset): number {
-  const myScore = hanchan.scores[hanchan.my_seat_index]
-  const scoreProfit = calculateProfitForSeat(myScore, hanchan.my_rank, preset)
+  const scoreProfit = calculateProfitForSeat(hanchan.scores, hanchan.my_seat_index, preset)
   const chipProfit = hanchan.chip_count * preset.chip_rate
   return scoreProfit + chipProfit
 }
@@ -129,54 +138,32 @@ export function calculateSetFee(session: Session, endedAt: Date): number {
   return Math.round((session.hourly_rate * billedHours) + reserve)
 }
 
-export function calculateFeePerHanchan(totalFee: number, hanchanCount: number): number[] {
-  if (hanchanCount === 0) return []
-  const base = Math.floor(totalFee / hanchanCount)
-  const remainder = totalFee - base * hanchanCount
-  return Array.from({ length: hanchanCount }, (_, i) => base + (i < remainder ? 1 : 0))
+// 1半荘あたりの場代を100円単位で切り上げ。全半荘で同額。
+// 切り上げにより合計が請求総額を下回らないようにする。
+export function calculatePerHanchanFee(totalFee: number, hanchanCount: number): number {
+  if (hanchanCount <= 0) return 0
+  return Math.ceil(totalFee / hanchanCount / 100) * 100
 }
 
-function equalSplit(fee: number, participants: string[]): Record<string, number> {
-  if (participants.length === 0) return {}
-  const per = Math.floor(fee / participants.length)
-  const remainder = fee - per * participants.length
-  return Object.fromEntries(
-    participants.map((name, i) => [name, per + (i < remainder ? 1 : 0)])
-  )
-}
-
+// 各人の場代負担額 = その人が1位を取った半荘数 × 1半荘単価
 function feeSharePerHanchanWinner(session: Session, hanchans: Hanchan[]): Record<string, number> {
-  const total = session.total_fee ?? 0
-  const fees = calculateFeePerHanchan(total, hanchans.length)
+  const totalFee = session.total_fee ?? 0
+  const perFee = calculatePerHanchanFee(totalFee, hanchans.length)
   const share: Record<string, number> = {}
   for (const name of session.participants ?? []) share[name] = 0
-
-  const sorted = [...hanchans].sort((a, b) => a.played_at.localeCompare(b.played_at))
-  for (let i = 0; i < sorted.length; i++) {
-    const h = sorted[i]
+  for (const h of hanchans) {
     const seats = h.participants_per_seat
     if (!seats) continue
     const topIdx = seats.findIndex((_, idx) => calculateRank(h.scores, idx) === 1)
     if (topIdx === -1) continue
     const topPlayer = seats[topIdx]
-    if (topPlayer in share) share[topPlayer] += fees[i]
+    if (topPlayer in share) share[topPlayer] += perFee
   }
   return share
 }
 
 export function splitFee(session: Session, hanchans: Hanchan[]): Record<string, number> {
-  const fee = session.total_fee ?? 0
-  const participants = session.participants ?? []
-  const method: SplitMethod = session.split_method ?? 'per_hanchan_winner'
-  switch (method) {
-    case 'per_hanchan_winner':
-      return feeSharePerHanchanWinner(session, hanchans)
-    case 'manual':
-      return session.manual_split ?? equalSplit(fee, participants)
-    case 'equal':
-    default:
-      return equalSplit(fee, participants)
-  }
+  return feeSharePerHanchanWinner(session, hanchans)
 }
 
 export function summarizePerParticipant(
@@ -187,19 +174,22 @@ export function summarizePerParticipant(
   const chipRate = session.chip_rate ?? preset.chip_rate
   const feeSplit = splitFee(session, hanchans)
 
+  // 各半荘の収支を1回だけ計算してキャッシュ
+  const profitsByHanchan = hanchans.map(h => calculateProfitsForHanchan(h.scores, preset))
+
   return (session.participants ?? []).map(name => {
     let scoreProfit = 0
     let hanchanCount = 0
     const ranks: number[] = []
 
-    for (const h of hanchans) {
+    hanchans.forEach((h, hIdx) => {
       const seatIndex = h.participants_per_seat?.indexOf(name) ?? -1
-      if (seatIndex === -1) continue
+      if (seatIndex === -1) return
       const rank = calculateRank(h.scores, seatIndex)
-      scoreProfit += calculateProfitForSeat(h.scores[seatIndex], rank, preset)
+      scoreProfit += profitsByHanchan[hIdx][seatIndex]
       ranks.push(rank)
       hanchanCount++
-    }
+    })
 
     const chipCount = session.participant_chips?.[name] ?? 0
     const chipProfit = chipCount * chipRate
@@ -220,15 +210,37 @@ export function summarizePerParticipant(
   })
 }
 
+// 参加者間の送金を1000円単位で算出。
+// 残高（素点+チップ収支、場代は店に各自直接支払う前提のため除外）を1000円単位に四捨五入し、
+// 丸めで生じたゼロサム崩れはトップ最多者で吸収する。
 export function calculateTransfers(summaries: ParticipantSummary[]): Transfer[] {
+  if (summaries.length === 0) return []
+
   const balances = summaries.map(s => ({
     name: s.participant,
-    amount: s.scoreProfit + s.chipProfit,
+    amount: Math.round((s.scoreProfit + s.chipProfit) / 1000) * 1000,
   }))
 
-  const transfers: Transfer[] = []
-  const epsilon = 1
+  const sum = balances.reduce((s, b) => s + b.amount, 0)
+  if (sum !== 0) {
+    const maxTop = Math.max(0, ...summaries.map(s => s.topCount))
+    const tops = maxTop > 0
+      ? summaries.filter(s => s.topCount === maxTop).map(s => s.participant)
+      : [summaries[0].participant]
 
+    const totalUnits = -sum / 1000
+    const baseUnit = Math.trunc(totalUnits / tops.length)
+    const remainderUnits = totalUnits - baseUnit * tops.length
+    const sign = Math.sign(remainderUnits)
+    const absRem = Math.abs(remainderUnits)
+    tops.forEach((name, i) => {
+      const target = balances.find(b => b.name === name)!
+      target.amount += baseUnit * 1000 + (i < absRem ? sign * 1000 : 0)
+    })
+  }
+
+  const transfers: Transfer[] = []
+  const epsilon = 500
   while (true) {
     balances.sort((a, b) => a.amount - b.amount)
     const debtor = balances[0]
@@ -236,11 +248,10 @@ export function calculateTransfers(summaries: ParticipantSummary[]): Transfer[] 
     if (Math.abs(debtor.amount) < epsilon || creditor.amount < epsilon) break
     const amount = Math.min(-debtor.amount, creditor.amount)
     if (amount < epsilon) break
-    transfers.push({ from: debtor.name, to: creditor.name, amount: Math.round(amount) })
+    transfers.push({ from: debtor.name, to: creditor.name, amount })
     debtor.amount += amount
     creditor.amount -= amount
   }
-
   return transfers
 }
 
