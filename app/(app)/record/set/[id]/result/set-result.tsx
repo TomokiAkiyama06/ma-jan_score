@@ -5,7 +5,7 @@ import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   summarizePerParticipant, calculateTransfers, calculateRank,
-  calculateProfitForSeat, splitFee, formatProfit, formatElapsed
+  calculateProfitsForHanchan, calculatePerHanchanFee, formatProfit, formatElapsed
 } from '@/lib/calculations'
 import type { Preset, Session, Hanchan } from '@/lib/types'
 
@@ -19,17 +19,9 @@ export function SetResult({ session, hanchans }: Props) {
   const participants = session.participants ?? []
   const summaries = summarizePerParticipant(session, hanchans, preset)
   const transfers = calculateTransfers(summaries)
-  const feeShare = splitFee(session, hanchans)
-  const chipRate = session.chip_rate ?? preset.chip_rate
 
-  const feePerHanchan = hanchans.length > 0 ? calculateFeePerHanchanArr(session.total_fee ?? 0, hanchans.length) : []
-
-  function calculateFeePerHanchanArr(total: number, count: number): number[] {
-    if (count === 0) return []
-    const base = Math.floor(total / count)
-    const rem = total - base * count
-    return Array.from({ length: count }, (_, i) => base + (i < rem ? 1 : 0))
-  }
+  // 1半荘あたりの場代（全半荘で同額、100円単位切り上げ）
+  const feePerHanchan = calculatePerHanchanFee(session.total_fee ?? 0, hanchans.length)
 
   return (
     <div className="px-4 pt-6 pb-8 space-y-6">
@@ -55,9 +47,7 @@ export function SetResult({ session, hanchans }: Props) {
               <span className="text-green-400 font-bold ml-2">{t.amount.toLocaleString()}円</span>
             </div>
           ))}
-          {session.split_method !== 'equal' && (
-            <p className="text-xs text-zinc-600">※ 場代は各半荘の1位の方が店に別途お支払い</p>
-          )}
+          <p className="text-xs text-zinc-600">※ 送金額は1000円単位。場代は各半荘の1位が店に別途お支払い</p>
         </div>
       )}
 
@@ -110,7 +100,7 @@ export function SetResult({ session, hanchans }: Props) {
             </thead>
             <tbody>
               {hanchans.map((h, hIdx) => {
-                const feeThis = feePerHanchan[hIdx] ?? 0
+                const profits = calculateProfitsForHanchan(h.scores, preset)
                 return (
                   <tr key={h.id} className="border-b border-zinc-800/50 last:border-0">
                     <td className="py-3 px-3 text-zinc-500 align-top">{hIdx + 1}</td>
@@ -119,15 +109,15 @@ export function SetResult({ session, hanchans }: Props) {
                       if (seatIdx === -1) return <td key={name} className="py-3 px-2 text-zinc-600 text-center">—</td>
                       const score = h.scores[seatIdx]
                       const rank = calculateRank(h.scores, seatIdx)
-                      const profit = calculateProfitForSeat(score, rank, preset)
+                      const profit = profits[seatIdx]
                       const isWinner = rank === 1
                       return (
                         <td key={name} className={`py-3 px-2 text-center align-top ${RANK_BG[rank]}`}>
                           <p className="text-zinc-200">{score.toLocaleString()}</p>
                           <p className={`font-semibold ${RANK_COLOR[rank]}`}>{rank}位</p>
                           <p className={profit >= 0 ? 'text-green-400' : 'text-red-400'}>{formatProfit(profit)}</p>
-                          {isWinner && (
-                            <p className="text-amber-400 text-[9px] mt-0.5">場代 −{feeThis.toLocaleString()}</p>
+                          {isWinner && feePerHanchan > 0 && (
+                            <p className="text-amber-400 text-[9px] mt-0.5">場代 −{feePerHanchan.toLocaleString()}</p>
                           )}
                         </td>
                       )
