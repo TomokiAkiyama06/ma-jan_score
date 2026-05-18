@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowRight } from 'lucide-react'
+import { Store } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   summarizePerParticipant, calculateTransfers, calculateRank,
@@ -18,10 +18,22 @@ export function SetResult({ session, hanchans }: Props) {
   const preset = session.preset
   const participants = session.participants ?? []
   const summaries = summarizePerParticipant(session, hanchans, preset)
-  const transfers = calculateTransfers(summaries)
+
+  // 場代は participants[0]（記録者=自分）が代表で店に全額を支払う前提
+  const collector = participants[0]
+  const totalFee = session.total_fee ?? 0
+  const transfers = calculateTransfers(summaries, { collector, totalFee })
 
   // 1半荘あたりの場代（全半荘で同額、100円単位切り上げ）
-  const feePerHanchan = calculatePerHanchanFee(session.total_fee ?? 0, hanchans.length)
+  const feePerHanchan = calculatePerHanchanFee(totalFee, hanchans.length)
+
+  // 受取人ごとに送金をグルーピング
+  const transfersByRecipient = new Map<string, { from: string; amount: number }[]>()
+  for (const t of transfers) {
+    const list = transfersByRecipient.get(t.to) ?? []
+    list.push({ from: t.from, amount: t.amount })
+    transfersByRecipient.set(t.to, list)
+  }
 
   return (
     <div className="px-4 pt-6 pb-8 space-y-6">
@@ -32,22 +44,50 @@ export function SetResult({ session, hanchans }: Props) {
         </p>
       </div>
 
-      {/* お金の動き */}
+      {/* 店への支払い */}
+      {totalFee > 0 && collector && (
+        <div className="rounded-xl bg-amber-950/40 border border-amber-800/50 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Store size={16} className="text-amber-400" />
+            <h2 className="text-sm font-semibold text-amber-300">店への支払い</h2>
+          </div>
+          <p className="text-zinc-200">
+            <span className="font-bold text-zinc-50">{collector}</span> が代表で
+            <span className="font-black text-amber-300 mx-1.5 text-lg">{totalFee.toLocaleString()}円</span>
+            をお店にお支払い
+          </p>
+          <p className="text-xs text-zinc-500 mt-1">※ 他の参加者は下記「お金の動き」で {collector} に渡す</p>
+        </div>
+      )}
+
+      {/* お金の動き（受取人グループ型） */}
       {transfers.length > 0 && (
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+        <div className="space-y-3">
           <h2 className="text-sm font-semibold text-zinc-300">お金の動き</h2>
-          {transfers.map((t, i) => (
-            <div key={i} className="flex items-center gap-3">
-              <span className="text-zinc-300 font-medium">{t.from}</span>
-              <div className="flex-1 flex items-center gap-1">
-                <div className="flex-1 h-0.5 bg-zinc-700" />
-                <ArrowRight size={14} className="text-zinc-500 flex-none" />
+          {Array.from(transfersByRecipient.entries()).map(([to, items]) => {
+            const total = items.reduce((s, i) => s + i.amount, 0)
+            return (
+              <div key={to} className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-green-400" />
+                    <span className="font-semibold text-zinc-100">{to}</span>
+                    <span className="text-xs text-zinc-500">受取</span>
+                  </div>
+                  <span className="text-green-400 font-black text-lg">{total.toLocaleString()}円</span>
+                </div>
+                <div className="space-y-1 pl-4 border-l-2 border-zinc-800">
+                  {items.map((i, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-sm">
+                      <span className="text-zinc-400">← {i.from}</span>
+                      <span className="text-zinc-200 font-medium">{i.amount.toLocaleString()}円</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <span className="text-zinc-300 font-medium">{t.to}</span>
-              <span className="text-green-400 font-bold ml-2">{t.amount.toLocaleString()}円</span>
-            </div>
-          ))}
-          <p className="text-xs text-zinc-600">※ 送金額は1000円単位。場代は各半荘の1位が店に別途お支払い</p>
+            )
+          })}
+          <p className="text-xs text-zinc-600">※ 送金額は1000円単位。丸め誤差はトップ最多者で吸収</p>
         </div>
       )}
 

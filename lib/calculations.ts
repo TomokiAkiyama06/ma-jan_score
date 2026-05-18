@@ -211,15 +211,28 @@ export function summarizePerParticipant(
 }
 
 // 参加者間の送金を1000円単位で算出。
-// 残高（素点+チップ収支、場代は店に各自直接支払う前提のため除外）を1000円単位に四捨五入し、
+// options.collector を指定すると、その参加者が場代全額を店に代表支払いする前提で、
+// 場代分担額（feeShare）を含めた精算を生成する。指定がなければ場代は無視（各人が店に直接支払う前提）。
 // 丸めで生じたゼロサム崩れはトップ最多者で吸収する。
-export function calculateTransfers(summaries: ParticipantSummary[]): Transfer[] {
+export function calculateTransfers(
+  summaries: ParticipantSummary[],
+  options?: { collector?: string; totalFee?: number }
+): Transfer[] {
   if (summaries.length === 0) return []
 
-  const balances = summaries.map(s => ({
-    name: s.participant,
-    amount: Math.round((s.scoreProfit + s.chipProfit) / 1000) * 1000,
-  }))
+  const collector = options?.collector
+  const totalFee = options?.totalFee ?? 0
+  const useFee = !!collector
+
+  // collector あり: balance = netProfit (=scoreProfit+chipProfit-feeShare)、
+  //                 collector に totalFee を加算してゼロサムに戻す
+  // collector なし: balance = scoreProfit + chipProfit（旧挙動）
+  const balances = summaries.map(s => {
+    const raw = useFee
+      ? s.scoreProfit + s.chipProfit - s.feeShare + (s.participant === collector ? totalFee : 0)
+      : s.scoreProfit + s.chipProfit
+    return { name: s.participant, amount: Math.round(raw / 1000) * 1000 }
+  })
 
   const sum = balances.reduce((s, b) => s + b.amount, 0)
   if (sum !== 0) {
