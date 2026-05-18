@@ -125,6 +125,21 @@ export type Transfer = {
   amount: number
 }
 
+// 場（プール）モデル: 負け分が場に入り、勝者と店が場から受け取る
+export type PoolFlow = {
+  pid: string
+  name: string
+  amount: number
+  isShop?: boolean
+}
+
+export type PoolFlowResult = {
+  inflows: PoolFlow[]
+  outflows: PoolFlow[]
+  poolTotal: number
+  shopAmount: number
+}
+
 export type SetSummary = {
   session: Session
   hanchans: Hanchan[]
