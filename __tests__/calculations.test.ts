@@ -308,6 +308,41 @@ describe('calculateTransfers（1000円単位）', () => {
     ])
   })
 
+  it('collector 指定時: 場代込みで精算し collector が代表受取する', () => {
+    // シードデータと同条件:
+    // 自分 scoreProfit=7800, feeShare=2600 → netProfit=5200
+    // A    scoreProfit=11600, feeShare=2600 → netProfit=9000
+    // B    scoreProfit=-5200, feeShare=1300 → netProfit=-6500
+    // C    scoreProfit=-14200, feeShare=1300 → netProfit=-15500
+    // collector=自分, totalFee=7800
+    // balance: 自分=5200+7800=13000, A=9000, B=-6500, C=-15500
+    // 丸め: 自分=13000, A=9000, B=-6000, C=-15000 (合計+1000)
+    // トップ最多(自分・A、topCount=2)で吸収 → 自分=12000, A=9000
+    // 送金: C→自分 12000, B→A 6000, C→A 3000
+    const summaries: ParticipantSummary[] = [
+      { participant: '自分', scoreProfit: 7800, chipCount: 0, chipProfit: 0, feeShare: 2600, netProfit: 5200, hanchanCount: 6, ranks: [], topCount: 2 },
+      { participant: 'A', scoreProfit: 11600, chipCount: 0, chipProfit: 0, feeShare: 2600, netProfit: 9000, hanchanCount: 6, ranks: [], topCount: 2 },
+      { participant: 'B', scoreProfit: -5200, chipCount: 0, chipProfit: 0, feeShare: 1300, netProfit: -6500, hanchanCount: 6, ranks: [], topCount: 1 },
+      { participant: 'C', scoreProfit: -14200, chipCount: 0, chipProfit: 0, feeShare: 1300, netProfit: -15500, hanchanCount: 6, ranks: [], topCount: 1 },
+    ]
+    const transfers = calculateTransfers(summaries, { collector: '自分', totalFee: 7800 })
+    expect(transfers).toEqual([
+      { from: 'C', to: '自分', amount: 12000 },
+      { from: 'B', to: 'A', amount: 6000 },
+      { from: 'C', to: 'A', amount: 3000 },
+    ])
+  })
+
+  it('collector なしの場合は場代を含めない（旧挙動）', () => {
+    // collector を指定しなければ feeShare を無視して scoreProfit+chipProfit ベースで計算
+    const summaries: ParticipantSummary[] = [
+      { participant: 'A', scoreProfit: 5000, chipCount: 0, chipProfit: 0, feeShare: 1000, netProfit: 4000, hanchanCount: 0, ranks: [], topCount: 2 },
+      { participant: 'B', scoreProfit: -5000, chipCount: 0, chipProfit: 0, feeShare: 1000, netProfit: -6000, hanchanCount: 0, ranks: [], topCount: 0 },
+    ]
+    // collector なし: balance=[A=5000, B=-5000] → B→A 5000
+    expect(calculateTransfers(summaries)).toEqual([{ from: 'B', to: 'A', amount: 5000 }])
+  })
+
   it('500円未満は送金しない', () => {
     // 全員 ±300円 → 全員0扱い
     const summaries = [
