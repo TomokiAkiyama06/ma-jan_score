@@ -11,6 +11,7 @@ import {
   calculateTransfers,
   splitFee,
   summarizePerParticipant,
+  calculatePoolFlows,
 } from '@/lib/calculations'
 import type { Hanchan, Preset, HanchanWithProfit, Session, ParticipantSummary } from '@/lib/types'
 
@@ -372,6 +373,56 @@ describe('calculateTransfers（1000円単位）', () => {
 
   it('空配列を返す', () => {
     expect(calculateTransfers([])).toEqual([])
+  })
+})
+
+describe('calculatePoolFlows（場ダイアグラム）', () => {
+  it('シードと同条件の場の流れを生成する', () => {
+    // 自分 netProfit=+5,200, A=+9,000, B=-6,500, C=-15,500, totalFee=7,800
+    // shopAmount=8000、各 netProfit を1000円丸め → 自分=5000, A=9000, B=-6000(Math.round(-6.5)=-6), C=-15000(Math.round(-15.5)=-15)
+    // 合計=-7000、target=-8000、diff=-1000 → トップ最多(自分とA、topCount=2)で吸収
+    //   units=-1, baseUnit=0, remainder=-1, sign=-1, absRem=1
+    //   自分(先頭)に -1000 → 自分=4000
+    // 結果: inflows=[B 6000, C 15000], outflows=[自分 4000, A 9000, 店 8000]
+    const summaries: ParticipantSummary[] = [
+      { participant: '自分', scoreProfit: 7800, chipCount: 0, chipProfit: 0, feeShare: 2600, netProfit: 5200, hanchanCount: 6, ranks: [], topCount: 2 },
+      { participant: 'A', scoreProfit: 11600, chipCount: 0, chipProfit: 0, feeShare: 2600, netProfit: 9000, hanchanCount: 6, ranks: [], topCount: 2 },
+      { participant: 'B', scoreProfit: -5200, chipCount: 0, chipProfit: 0, feeShare: 1300, netProfit: -6500, hanchanCount: 6, ranks: [], topCount: 1 },
+      { participant: 'C', scoreProfit: -14200, chipCount: 0, chipProfit: 0, feeShare: 1300, netProfit: -15500, hanchanCount: 6, ranks: [], topCount: 1 },
+    ]
+    const flow = calculatePoolFlows(summaries, 7800)
+    expect(flow.shopAmount).toBe(8000)
+    expect(flow.inflows).toEqual([
+      { pid: 'B', name: 'B', amount: 6000 },
+      { pid: 'C', name: 'C', amount: 15000 },
+    ])
+    expect(flow.outflows).toEqual([
+      { pid: '自分', name: '自分', amount: 4000 },
+      { pid: 'A', name: 'A', amount: 9000 },
+      { pid: 'shop', name: 'お店', amount: 8000, isShop: true },
+    ])
+    expect(flow.poolTotal).toBe(21000)
+    // 流入と (参加者流出 + 店) は一致する
+    const sumIn = flow.inflows.reduce((s, f) => s + f.amount, 0)
+    const sumOut = flow.outflows.reduce((s, f) => s + f.amount, 0)
+    expect(sumIn).toBe(sumOut)
+  })
+
+  it('totalFee=0 でも参加者間の流れは生成される', () => {
+    // フリー精算（場代なし）想定。inflows = 負け、outflows = 勝ち
+    const summaries: ParticipantSummary[] = [
+      { participant: 'A', scoreProfit: 5000, chipCount: 0, chipProfit: 0, feeShare: 0, netProfit: 5000, hanchanCount: 0, ranks: [], topCount: 1 },
+      { participant: 'B', scoreProfit: -5000, chipCount: 0, chipProfit: 0, feeShare: 0, netProfit: -5000, hanchanCount: 0, ranks: [], topCount: 0 },
+    ]
+    const flow = calculatePoolFlows(summaries, 0)
+    expect(flow.shopAmount).toBe(0)
+    expect(flow.inflows).toEqual([{ pid: 'B', name: 'B', amount: 5000 }])
+    expect(flow.outflows).toEqual([{ pid: 'A', name: 'A', amount: 5000 }])
+    expect(flow.poolTotal).toBe(5000)
+  })
+
+  it('空配列を返す', () => {
+    expect(calculatePoolFlows([], 0)).toEqual({ inflows: [], outflows: [], poolTotal: 0, shopAmount: 0 })
   })
 })
 

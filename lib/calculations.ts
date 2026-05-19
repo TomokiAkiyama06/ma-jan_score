@@ -1,7 +1,7 @@
 import type {
   Hanchan, Preset, Session, HanchanWithProfit,
   KpiStats, MonthlyStats, RankDistribution, PresetStats, CumulativePoint,
-  ParticipantSummary, Transfer
+  ParticipantSummary, Transfer, PoolFlow, PoolFlowResult
 } from './types'
 
 // ─── 着順計算 ─────────────────────────────────────────────
@@ -266,6 +266,63 @@ export function calculateTransfers(
     creditor.amount -= amount
   }
   return transfers
+}
+
+// ─── 場（プール）モデル ────────────────────────────────────
+
+// セット精算を「場（プール）経由」で表現する。
+// 負け分（netProfit < 0）が場に入り、勝者の取り分と店への場代が場から出ていく。
+// 全ての金額は1000円単位に丸めて表示用に揃える（実額は ParticipantSummary 側で保持）。
+// 丸めによるゼロサム崩れはトップ最多者で吸収する。
+export function calculatePoolFlows(
+  summaries: ParticipantSummary[],
+  totalFee: number
+): PoolFlowResult {
+  if (summaries.length === 0) {
+    return { inflows: [], outflows: [], poolTotal: 0, shopAmount: 0 }
+  }
+
+  // 店への支払いも1000円単位で表示
+  const shopAmount = Math.round(totalFee / 1000) * 1000
+
+  // 各人の場との取引 = netProfit (= scoreProfit + chipProfit - feeShare) を1000円単位に丸め
+  const rounded = summaries.map(s => ({
+    name: s.participant,
+    topCount: s.topCount,
+    amount: Math.round((s.scoreProfit + s.chipProfit - s.feeShare) / 1000) * 1000,
+  }))
+
+  // 理論上 sum(rounded) = -shopAmount（参加者間ゼロサム＋場代分が店へ流出）
+  // 丸めによるズレをトップ最多者で吸収（複数なら均等振り分け）
+  const target = -shopAmount
+  const sum = rounded.reduce((a, b) => a + b.amount, 0)
+  const diff = target - sum
+  if (diff !== 0) {
+    const maxTop = Math.max(0, ...rounded.map(r => r.topCount))
+    const absorbers = maxTop > 0
+      ? rounded.filter(r => r.topCount === maxTop)
+      : [rounded[0]]
+    const units = diff / 1000
+    const baseUnit = Math.trunc(units / absorbers.length)
+    const remainder = units - baseUnit * absorbers.length
+    const sign = Math.sign(remainder)
+    const absRem = Math.abs(remainder)
+    absorbers.forEach((a, i) => {
+      a.amount += baseUnit * 1000 + (i < absRem ? sign * 1000 : 0)
+    })
+  }
+
+  const inflows: PoolFlow[] = rounded
+    .filter(r => r.amount < 0)
+    .map(r => ({ pid: r.name, name: r.name, amount: -r.amount }))
+  const outflows: PoolFlow[] = rounded
+    .filter(r => r.amount > 0)
+    .map(r => ({ pid: r.name, name: r.name, amount: r.amount }))
+  if (shopAmount > 0) {
+    outflows.push({ pid: 'shop', name: 'お店', amount: shopAmount, isShop: true })
+  }
+  const poolTotal = inflows.reduce((s, f) => s + f.amount, 0)
+  return { inflows, outflows, poolTotal, shopAmount }
 }
 
 // ─── 場替えリマインダー ───────────────────────────────────
